@@ -109,11 +109,19 @@ class RawDataLoader:
             raise RuntimeError(f"Failed to save Excel file {output_path}: {exc}") from exc
 
 def _main() -> None:
-    """Simple command-line driver for manual testing."""
+    """Simple command-line driver for manual testing.
+
+    The loader reads an Excel file, applies column renaming, and then
+    filters the dataset to a handful of action types before writing
+    the result back out.
+    """
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Load a TradeLens Excel file and rename its columns."
+        description=(
+            "Load a TradeLens Excel file, rename its columns and "
+            "filter by a small set of action types."
+        )
     )
     parser.add_argument("path", help="path to the Excel workbook")
     args = parser.parse_args()
@@ -121,10 +129,21 @@ def _main() -> None:
     loader = RawDataLoader(args.path)
     try:
         df = loader.load()
-        filtered_df = loader.filter_by_action_type(exclude_action_types=[RawActionType.BUY, RawActionType.SELL])
+
+        # keep only these actions
+        keep_actions = [
+            RawActionType.BUY,
+            RawActionType.SELL,
+            RawActionType.DEPOSIT,
+            RawActionType.PURCHASE_SHEKEL,
+            RawActionType.TRANSFER_CASH_SHEKEL,
+        ]
+        filtered_df = loader.filter_by_action_type(action_types=keep_actions)
         print(f"Loaded {len(df)} rows. Filtered to {len(filtered_df)} rows.")
-        loader.save_to_excel(args.path.replace('.xlsx', '_processed.xlsx'))
-        print(f"Processed data saved to {args.path.replace('.xlsx', '_processed.xlsx')}")
+
+        out_path = args.path.replace('.xlsx', '_processed.xlsx')
+        loader.save_to_excel(out_path)
+        print(f"Processed data saved to {out_path}")
     except Exception as exc:  # propagate a readable error code
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(1)
