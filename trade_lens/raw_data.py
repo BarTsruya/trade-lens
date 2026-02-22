@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import List
 import pandas as pd
 import sys
 
@@ -39,9 +40,9 @@ class RawActionType(Enum):
     SALE_SHEKEL = "sale_shekel"
     WITHDRAWAL_TAX_FOREIGN = "withdrawal_tax_foreign"
     DEPOSIT_DIVIDEND_FOREIGN = "deposit_dividend_foreign"
-    PURCHASE_FOREIGN = "purchase_foreign"
+    BUY = "buy"
     DEPOSIT = "deposit"
-    SALE_FOREIGN = "sale_foreign"
+    SELL = "sell"
     PURCHASE_SHEKEL = "purchase_shekel"
     TRANSFER_CASH_SHEKEL = "transfer_cash_shekel"
     CASH_HANDLING_FEE_SHEKEL = "cash_handling_fee_shekel"
@@ -54,12 +55,12 @@ HEBREW_ACTION_TYPE_MAP = {
     "מכירה שח": RawActionType.SALE_SHEKEL.value,
     "משיכת מס חול מטח": RawActionType.WITHDRAWAL_TAX_FOREIGN.value,
     "הפקדה דיבידנד מטח": RawActionType.DEPOSIT_DIVIDEND_FOREIGN.value,
-    "קניה חול מטח": RawActionType.PURCHASE_FOREIGN.value,
+    "קניה חול מטח": RawActionType.BUY.value,
     "הפקדה": RawActionType.DEPOSIT.value,
-    "מכירה חול מטח": RawActionType.SALE_FOREIGN.value,
+    "מכירה חול מטח": RawActionType.SELL.value,
     "קניה שח": RawActionType.PURCHASE_SHEKEL.value,
     "העברה מזומן בשח": RawActionType.TRANSFER_CASH_SHEKEL.value,
-    "דמי טיפול מזומן בשח": RawActionType.CASH_HANDLING_FEE_SHEKEL.value,
+    "דמי טפול מזומן בשח": RawActionType.CASH_HANDLING_FEE_SHEKEL.value,
     "משיכה": RawActionType.WITHDRAWAL.value,
     'משיכת ריבית מט"ח': RawActionType.WITHDRAWAL_INTEREST_FOREIGN.value,
     "שונות מזומן בשח": RawActionType.OTHER_CASH_SHEKEL.value
@@ -83,12 +84,32 @@ class RawDataLoader:
             raise RuntimeError(f"Failed to load Excel file {self.path}: {exc}") from exc
 
         return self.df
+    
+    def filter_by_action_type(self, action_types: List[RawActionType] | None = None, exclude_action_types: List[RawActionType] | None = None) -> pd.DataFrame:
+        if self.df is None:
+            raise RuntimeError("Data not loaded. Call load() before filtering.")
+        
+        filtered_df = self.df.copy()
+        
+        if action_types:
+            filtered_df = filtered_df[filtered_df["action_type"].isin([a.value for a in action_types])]
+        
+        if exclude_action_types:
+            filtered_df = filtered_df[~filtered_df["action_type"].isin([a.value for a in exclude_action_types])]
+        
+        self.df = filtered_df
+        return self.df
 
-
-
+    def save_to_excel(self, output_path: str) -> None:
+        if self.df is None:
+            raise RuntimeError("No data to save. Call load() first.")
+        try:
+            self.df.to_excel(output_path, index=False)
+        except Exception as exc:
+            raise RuntimeError(f"Failed to save Excel file {output_path}: {exc}") from exc
 
 def _main() -> None:
-    """Simple command‑line driver for manual testing."""
+    """Simple command-line driver for manual testing."""
     import argparse
 
     parser = argparse.ArgumentParser(
@@ -100,11 +121,13 @@ def _main() -> None:
     loader = RawDataLoader(args.path)
     try:
         df = loader.load()
+        filtered_df = loader.filter_by_action_type(exclude_action_types=[RawActionType.BUY, RawActionType.SELL])
+        print(f"Loaded {len(df)} rows. Filtered to {len(filtered_df)} rows.")
+        loader.save_to_excel(args.path.replace('.xlsx', '_processed.xlsx'))
+        print(f"Processed data saved to {args.path.replace('.xlsx', '_processed.xlsx')}")
     except Exception as exc:  # propagate a readable error code
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(1)
-
-    print(df["action_type"][0:5])  # print the first few rows for sanity check
 
 
 if __name__ == "__main__":
