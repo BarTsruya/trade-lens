@@ -115,12 +115,41 @@ class BalanceManager:
             self.usd_balance += amt * rate
 
         return self
+    
+    def process_transaction(self, txn: Transaction) -> BalanceManager:
+        cur = txn.currency.upper()
+        if cur not in ("USD", "ILS"):
+            raise ValueError(f"unsupported currency {txn.currency!r}")
+        
+        total_cost = txn.quantity * txn.price
+        
+        if txn.txn_type.lower() == "buy":
+            if cur == "USD":
+                if self.usd_balance < total_cost:
+                    raise ValueError("insufficient USD balance")
+                self.usd_balance -= total_cost
+            else:  # ILS
+                if self.shekel_balance < total_cost:
+                    raise ValueError("insufficient ILS balance")
+                self.shekel_balance -= total_cost
+        elif txn.txn_type.lower() == "sell":
+            if cur == "USD":
+                self.usd_balance += total_cost
+            else:  # ILS
+                self.shekel_balance += total_cost
+        else:
+            raise ValueError(f"unsupported transaction type {txn.txn_type!r}")
+        
+        return self
 
     def process_action(self, action: Action) -> BalanceManager:
         if isinstance(action, Deposit):
             return self.process_deposit(action)
         elif isinstance(action, Conversion):
             return self.process_conversion(action)
+        elif isinstance(action, Transaction):
+            # Transaction handling can be added here if needed
+            return self
         else:
             raise TypeError(f"unsupported action type {type(action).__name__!r}")
 
