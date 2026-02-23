@@ -3,6 +3,22 @@ from __future__ import annotations
 from abc import ABC
 from dataclasses import dataclass
 from datetime import date
+from enum import Enum
+
+
+class Currency(Enum):
+    """Supported currencies.
+
+    ``value`` is the three‑letter ISO code; use ``.symbol`` if you need a
+    user‑friendly glyph.
+    """
+
+    USD = "USD"
+    ILS = "ILS"
+
+    @property
+    def symbol(self) -> str:
+        return {Currency.USD: "$", Currency.ILS: "₪"}[self]
 
 
 @dataclass
@@ -28,7 +44,7 @@ class Transaction(Action):
     """
 
     txn_type: str  # "buy" or "sell"
-    currency: str
+    currency: Currency
     quantity: float
     price: float
 
@@ -41,7 +57,7 @@ class Deposit(Action):
     can be added later if required.
     """
 
-    currency: str
+    currency: Currency
     quantity: float
 
 
@@ -56,26 +72,40 @@ class Conversion(Action):
     uppercased.
     """
 
-    from_currency: str
-    to_currency: str
+    from_currency: Currency
+    to_currency: Currency
     amount: float
     rate: float
 
     def __post_init__(self):
-        # normalise codes so manager logic can trust uppercase
-        self.from_currency = self.from_currency.upper()
-        self.to_currency = self.to_currency.upper()
+        # convert strings to enum if necessary; preserve Currency instances
+        if isinstance(self.from_currency, str):
+            self.from_currency = Currency(self.from_currency.upper())
+        if isinstance(self.to_currency, str):
+            self.to_currency = Currency(self.to_currency.upper())
 
-__all__ = ["Action", "Transaction", "Deposit", "Conversion"]
+__all__ = ["Action", "Currency", "Transaction", "Deposit", "Conversion"]
 
 
 # simple CLI driver for interactive experimentation
 def _main() -> None:
     from datetime import date
 
-    t1 = Transaction(date=date(2025, 1, 1), txn_type="buy", currency="USD", quantity=100, price=10.0)
-    t2 = Transaction(date=date(2025, 2, 1), txn_type="sell", currency="USD", quantity=50, price=12.5)
-    d1 = Deposit(date=date(2025, 3, 1), currency="USD", quantity=200)
+    t1 = Transaction(
+        date=date(2025, 1, 1),
+        txn_type="buy",
+        currency=Currency.USD,
+        quantity=100,
+        price=10.0,
+    )
+    t2 = Transaction(
+        date=date(2025, 2, 1),
+        txn_type="sell",
+        currency=Currency.USD,
+        quantity=50,
+        price=12.5,
+    )
+    d1 = Deposit(date=date(2025, 3, 1), currency=Currency.USD, quantity=200)
 
     print(t1)
     print(t2)
