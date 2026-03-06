@@ -9,22 +9,15 @@ BUY_SELL_ACTIONS = {RawActionType.BUY.value, RawActionType.SELL.value}
 
 def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Convert broker-mapped raw df into a canonical 'ledger' df for analytics.
-
     Canonical output columns:
       - date
       - action_type
       - symbol
       - gross_usd (signed, from total_value_foreign)
-      - gross_ils (signed, from total_value_shekel)
-      - fees_ils (>= 0, from commission_fee + additional_fees)
+      - fees_usd (>= 0, from commission_fee + additional_fees; IBI export uses USD fees)
       - net_usd (signed)
-      - net_ils (signed)
-
-    Fee rules:
-      - buy/sell: net_ils = gross_ils - fees_ils
-      - all other action types: net_ils = gross_ils (avoid double-counting)
-      - net_usd defaults to gross_usd (no FX conversion logic in v1)
+      - gross_ils (signed, from total_value_shekel; may be 0 for trade rows)
+      - net_ils (signed; v1: equals gross_ils, no FX conversion and no fee subtraction)
     """
     df = raw_df.copy()
 
@@ -47,21 +40,24 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    df["fees_ils"] = 0.0
-    if commission_col in df.columns:
-        df["fees_ils"] = df["fees_ils"] + df[commission_col].fillna(0)
-    if add_fees_col in df.columns:
-        df["fees_ils"] = df["fees_ils"] + df[add_fees_col].fillna(0)
-
     df["gross_usd"] = df[gross_usd_col].fillna(0.0) if gross_usd_col in df.columns else 0.0
     df["gross_ils"] = df[gross_ils_col].fillna(0.0) if gross_ils_col in df.columns else 0.0
+
+    # Fees are ALWAYS in USD in your IBI export
+    df["fees_usd"] = 0.0
+    if commission_col in df.columns:
+        df["fees_usd"] = df["fees_usd"] + df[commission_col].fillna(0.0)
+    if add_fees_col in df.columns:
+        df["fees_usd"] = df["fees_usd"] + df[add_fees_col].fillna(0.0)
 
     df[action_col] = df[action_col].astype("string")
     is_trade = df[action_col].isin(BUY_SELL_ACTIONS)
 
     df["net_usd"] = df["gross_usd"]
+    df.loc[is_trade, "net_usd"] = df.loc[is_trade, "gross_usd"] - df.loc[is_trade, "fees_usd"]
+
+    # v1: do not convert and do not subtract USD fees from ILS amounts
     df["net_ils"] = df["gross_ils"]
-    df.loc[is_trade, "net_ils"] = df.loc[is_trade, "gross_ils"] - df.loc[is_trade, "fees_ils"]
 
     out = pd.DataFrame(
         {
@@ -69,9 +65,9 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
             "action_type": df[action_col],
             "symbol": df[symbol_col] if symbol_col in df.columns else None,
             "gross_usd": df["gross_usd"],
-            "gross_ils": df["gross_ils"],
-            "fees_ils": df["fees_ils"],
+            "fees_usd": df["fees_usd"],
             "net_usd": df["net_usd"],
+            "gross_ils": df["gross_ils"],
             "net_ils": df["net_ils"],
         }
     )
