@@ -22,7 +22,11 @@ def monthly_net_cashflow(
     value_col = "net_usd" if currency.upper() == "USD" else "net_ils"
 
     if not include_deposits:
-        allowed = {RawActionType.BUY.value, RawActionType.SELL.value, RawActionType.CASH_HANDLING_FEE_SHEKEL.value}
+        allowed = {
+            RawActionType.BUY.value,
+            RawActionType.SELL.value,
+            RawActionType.CASH_HANDLING_FEE_SHEKEL.value,
+        }
         df = df[df["action_type"].isin(allowed)]
 
     out = df.groupby("month", dropna=True, as_index=False)[value_col].sum()
@@ -31,14 +35,21 @@ def monthly_net_cashflow(
 
 
 def monthly_fees_breakdown(ledger_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Monthly fees breakdown.
+
+    Notes:
+    - IBI commission_fee/additional_fees are USD in your export -> aggregated as `fees_usd`
+    - Cash handling fee is an ILS cashflow action -> aggregated from `gross_ils`
+    """
     df = ledger_df.copy()
     df["month"] = pd.to_datetime(df["date"], errors="coerce").dt.to_period("M").dt.to_timestamp()
 
     embedded = (
         df[df["action_type"].isin([RawActionType.BUY.value, RawActionType.SELL.value])]
-        .groupby("month", dropna=True, as_index=False)["fees_ils"]
+        .groupby("month", dropna=True, as_index=False)["fees_usd"]
         .sum()
-        .rename(columns={"fees_ils": "embedded_fees_ils"})
+        .rename(columns={"fees_usd": "embedded_fees_usd"})
     )
 
     cash = (
