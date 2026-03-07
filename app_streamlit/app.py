@@ -32,6 +32,11 @@ def load_and_normalize(file_bytes: bytes, file_name: str) -> Tuple[pd.DataFrame,
 
         raw_df = IbiRawLoader(temp_path).load()
         ledger_df = to_ledger(raw_df)
+        # Ensure Arrow-friendly dtypes for Streamlit dataframe serialization.
+        if "symbol" in ledger_df.columns:
+            ledger_df["symbol"] = ledger_df["symbol"].fillna("").astype("string")
+        if "action_type" in ledger_df.columns:
+            ledger_df["action_type"] = ledger_df["action_type"].fillna("").astype("string")
         return raw_df, ledger_df
     finally:
         if temp_path:
@@ -67,7 +72,7 @@ with tab_ledger:
     stat_col2.metric("Date From", "N/A" if pd.isna(min_date) else str(min_date.date()))
     stat_col3.metric("Date To", "N/A" if pd.isna(max_date) else str(max_date.date()))
 
-    st.dataframe(ledger, use_container_width=True, hide_index=True)
+    st.dataframe(ledger, width="stretch", hide_index=True)
 
 with tab_cashflow:
     st.subheader("Monthly Net Cashflow (USD)")
@@ -86,8 +91,8 @@ with tab_cashflow:
             labels={"month": "Month", "net_usd_sum": "Net USD"},
         )
         fig_cashflow.update_layout(xaxis_title="Month", yaxis_title="Net USD")
-        st.plotly_chart(fig_cashflow, use_container_width=True)
-        st.dataframe(cashflow_df, use_container_width=True, hide_index=True)
+        st.plotly_chart(fig_cashflow, width="stretch")
+        st.dataframe(cashflow_df, width="stretch", hide_index=True)
 
 with tab_fees:
     st.subheader("Monthly Fees Breakdown")
@@ -112,8 +117,8 @@ with tab_fees:
             title="Monthly Fees Breakdown",
             labels={"month": "Month", "amount": "Amount", "fee_type": "Fee Type"},
         )
-        st.plotly_chart(fig_fees, use_container_width=True)
-        st.dataframe(fees_df, use_container_width=True, hide_index=True)
+        st.plotly_chart(fig_fees, width="stretch")
+        st.dataframe(fees_df, width="stretch", hide_index=True)
 
 with tab_symbols:
     st.subheader("Top Symbols (USD)")
@@ -124,4 +129,4 @@ with tab_symbols:
     if symbols_df.empty:
         st.warning("No symbol activity data available.")
     else:
-        st.dataframe(symbols_df.head(top_n), use_container_width=True, hide_index=True)
+        st.dataframe(symbols_df.head(top_n), width="stretch", hide_index=True)
