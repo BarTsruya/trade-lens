@@ -24,6 +24,7 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
     date_col = RawDataAttribute.ACTION_DATE.value
     action_col = RawDataAttribute.ACTION_TYPE.value
     symbol_col = RawDataAttribute.PAPER_SYMBOL.value
+    paper_name_col = RawDataAttribute.PAPER_NAME.value
 
     gross_usd_col = RawDataAttribute.TOTAL_VALUE_FOREIGN.value
     gross_ils_col = RawDataAttribute.TOTAL_VALUE_SHEKEL.value
@@ -64,6 +65,7 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
             "date": pd.to_datetime(df[date_col], errors="coerce"),
             "action_type": df[action_col],
             "symbol": df[symbol_col] if symbol_col in df.columns else None,
+            "paper_name": df[paper_name_col].fillna("").astype("string") if paper_name_col in df.columns else "",
             "gross_usd": df["gross_usd"],
             "fees_usd": df["fees_usd"],
             "net_usd": df["net_usd"],

@@ -8,6 +8,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from trade_lens.analytics.balance import balance_timeline_daily
 from trade_lens.analytics.cashflow import monthly_fees_breakdown, monthly_net_cashflow
 from trade_lens.analytics.symbols import symbol_summary
 from trade_lens.brokers.ibi import IbiRawLoader
@@ -37,6 +38,8 @@ def load_and_normalize(file_bytes: bytes, file_name: str) -> Tuple[pd.DataFrame,
             ledger_df["symbol"] = ledger_df["symbol"].fillna("").astype("string")
         if "action_type" in ledger_df.columns:
             ledger_df["action_type"] = ledger_df["action_type"].fillna("").astype("string")
+        if "paper_name" in ledger_df.columns:
+            ledger_df["paper_name"] = ledger_df["paper_name"].fillna("").astype("string")
         return raw_df, ledger_df
     finally:
         if temp_path:
@@ -58,7 +61,9 @@ except Exception as exc:
 
 st.success(f"Loaded {len(raw):,} raw rows and normalized to {len(ledger):,} ledger rows.")
 
-tab_ledger, tab_cashflow, tab_fees, tab_symbols = st.tabs(["Ledger", "Cashflow", "Fees", "Symbols"])
+tab_ledger, tab_balance, tab_cashflow, tab_fees, tab_symbols = st.tabs(
+    ["Ledger", "Balance", "Cashflow", "Fees", "Symbols"]
+)
 
 with tab_ledger:
     st.subheader("Ledger Preview")
@@ -73,6 +78,35 @@ with tab_ledger:
     stat_col3.metric("Date To", "N/A" if pd.isna(max_date) else str(max_date.date()))
 
     st.dataframe(ledger, width="stretch", hide_index=True)
+
+with tab_balance:
+    st.subheader("Balance")
+    st.caption(
+        "Aggregated daily balance computed from ILS deposits (transfer_cash_shekel) and "
+        "ILS->USD conversions (purchase_shekel symbol 99028). USD deposits are not included yet."
+    )
+
+    balance_df = balance_timeline_daily(ledger)
+
+    if balance_df.empty:
+        st.warning("No balance actions found for these action types.")
+    else:
+        st.dataframe(balance_df, width="stretch", hide_index=True)
+        balance_long = balance_df.melt(
+            id_vars=["day"],
+            value_vars=["usd_balance", "ils_balance"],
+            var_name="balance_type",
+            value_name="balance",
+        )
+        fig_balance = px.line(
+            balance_long,
+            x="day",
+            y="balance",
+            color="balance_type",
+            title="Running USD and ILS Balances",
+            labels={"day": "Day", "balance": "Balance", "balance_type": "Series"},
+        )
+        st.plotly_chart(fig_balance, width="stretch")
 
 with tab_cashflow:
     st.subheader("Monthly Net Cashflow (USD)")
