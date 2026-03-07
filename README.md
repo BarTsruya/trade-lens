@@ -5,7 +5,7 @@ from trade_lens.pipeline.normalize import to_ledger
 from trade_lens.analytics.cashflow import monthly_net_cashflow, monthly_fees_breakdown
 from trade_lens.analytics.symbols import symbol_summary
 
-raw = IbiRawLoader("ibi_export.xlsx").load()
+raw = IbiRawLoader(r"resources\actions_2025.xlsx").load()
 ledger = to_ledger(raw)
 
 print(monthly_net_cashflow(ledger, currency="USD", include_deposits=True))
