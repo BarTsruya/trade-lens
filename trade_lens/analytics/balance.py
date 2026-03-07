@@ -7,7 +7,7 @@ import pandas as pd
 from trade_lens.brokers.ibi import RawActionType
 
 
-EMPTY_COLUMNS = ["day", "note", "usd_delta", "ils_delta", "usd_balance", "ils_balance"]
+EMPTY_COLUMNS = ["date", "note", "usd_delta", "ils_delta", "usd_balance", "ils_balance"]
 
 
 def _empty_result() -> pd.DataFrame:
@@ -96,8 +96,8 @@ def balance_timeline_daily(ledger_df: pd.DataFrame) -> pd.DataFrame:
         has_conversion = (row["conv_usd"] != 0) or (row["conv_ils"] != 0)
         if has_conversion:
             conversion_text = (
-                f"ILS->USD conversion: {_format_amount(row['conv_ils'], 'ILS')}, "
-                f"{_format_amount(row['conv_usd'], 'USD')}"
+                f"ILS->USD conversion: {abs(row['conv_ils']):,.2f} ILS -> "
+                f"{abs(row['conv_usd']):,.2f} USD"
             )
             if row["fx_info"]:
                 conversion_text = f"{conversion_text} (rate: {row['fx_info']})"
@@ -111,6 +111,7 @@ def balance_timeline_daily(ledger_df: pd.DataFrame) -> pd.DataFrame:
     out.reset_index(drop=True, inplace=True)
     out["usd_balance"] = out["usd_delta"].cumsum()
     out["ils_balance"] = out["ils_delta"].cumsum()
+    out["date"] = pd.to_datetime(out["day"], errors="coerce").dt.date
 
     return out[EMPTY_COLUMNS]
 

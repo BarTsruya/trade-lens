@@ -93,18 +93,18 @@ with tab_balance:
     else:
         st.dataframe(balance_df, width="stretch", hide_index=True)
         balance_long = balance_df.melt(
-            id_vars=["day"],
+            id_vars=["date"],
             value_vars=["usd_balance", "ils_balance"],
             var_name="balance_type",
             value_name="balance",
         )
         fig_balance = px.line(
             balance_long,
-            x="day",
+            x="date",
             y="balance",
             color="balance_type",
             title="Running USD and ILS Balances",
-            labels={"day": "Day", "balance": "Balance", "balance_type": "Series"},
+            labels={"date": "Day", "balance": "Balance", "balance_type": "Series"},
         )
         st.plotly_chart(fig_balance, width="stretch")
 
