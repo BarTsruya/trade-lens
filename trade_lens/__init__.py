@@ -1,22 +1,25 @@
-"""Top-level package for the TradeLens library.
+"""Trade Lens: broker import + normalization + analytics (IBI v1)."""
 
-This module primarily exists to mark ``trade_lens`` as a package so it
-can be installed with pip and to expose a small public API surface for
-convenience.
-"""
-
-from .action import Action, Transaction, Deposit, Conversion
-from .balance_manager import BalanceManager
-from .raw_data import RawDataLoader, RawActionType, RawDataAttribute
-
+from trade_lens.brokers.ibi import IbiRawLoader, RawActionType, RawDataAttribute
+from trade_lens.pipeline.normalize import to_ledger
+from trade_lens.analytics import monthly_net_cashflow, monthly_fees_breakdown, symbol_summary
+from trade_lens.models import Currency, Action, Transaction, Deposit, Conversion
 
 __all__ = [
+    # Brokers
+    "IbiRawLoader",
+    "RawActionType",
+    "RawDataAttribute",
+    # Pipeline
+    "to_ledger",
+    # Analytics
+    "monthly_net_cashflow",
+    "monthly_fees_breakdown",
+    "symbol_summary",
+    # Models (kept for future expansion)
+    "Currency",
     "Action",
     "Transaction",
     "Deposit",
     "Conversion",
-    "BalanceManager",
-    "RawDataLoader",
-    "RawActionType",
-    "RawDataAttribute",
 ]
