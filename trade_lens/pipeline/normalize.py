@@ -25,6 +25,10 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
     action_col = RawDataAttribute.ACTION_TYPE.value
     symbol_col = RawDataAttribute.PAPER_SYMBOL.value
     paper_name_col = RawDataAttribute.PAPER_NAME.value
+<<<<<<< HEAD
+=======
+    quantity_col = RawDataAttribute.QUANTITY.value
+>>>>>>> 130ec5d (fix usd delta and balance)
 
     gross_usd_col = RawDataAttribute.TOTAL_VALUE_FOREIGN.value
     gross_ils_col = RawDataAttribute.TOTAL_VALUE_SHEKEL.value
@@ -37,7 +41,7 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
             raise ValueError(f"Missing required column {col!r} in raw_df")
 
     # numeric coercion
-    for col in (gross_usd_col, gross_ils_col, commission_col, add_fees_col):
+    for col in (gross_usd_col, gross_ils_col, commission_col, add_fees_col, quantity_col):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
@@ -66,6 +70,10 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
             "action_type": df[action_col],
             "symbol": df[symbol_col] if symbol_col in df.columns else None,
             "paper_name": df[paper_name_col].fillna("").astype("string") if paper_name_col in df.columns else "",
+<<<<<<< HEAD
+=======
+            "quantity": df[quantity_col].fillna(0.0) if quantity_col in df.columns else 0.0,
+>>>>>>> 130ec5d (fix usd delta and balance)
             "gross_usd": df["gross_usd"],
             "fees_usd": df["fees_usd"],
             "net_usd": df["net_usd"],

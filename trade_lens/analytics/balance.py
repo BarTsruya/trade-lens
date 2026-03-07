@@ -1,9 +1,17 @@
 from __future__ import annotations
 
-import pandas as pd
 from typing import List
 
+import pandas as pd
+
 from trade_lens.brokers.ibi import RawActionType
+
+
+EMPTY_COLUMNS = ["day", "note", "usd_delta", "ils_delta", "usd_balance", "ils_balance"]
+
+
+def _empty_result() -> pd.DataFrame:
+    return pd.DataFrame(columns=EMPTY_COLUMNS)
 
 
 def _format_amount(value: float, currency: str) -> str:
@@ -14,12 +22,12 @@ def balance_timeline_daily(ledger_df: pd.DataFrame) -> pd.DataFrame:
     df = ledger_df.copy()
 
     if "date" not in df.columns or "action_type" not in df.columns:
-        return pd.DataFrame(columns=["day", "note", "usd_delta", "ils_delta", "usd_balance", "ils_balance"])
+        return _empty_result()
 
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df = df[df["date"].notna()].copy()
     if df.empty:
-        return pd.DataFrame(columns=["day", "note", "usd_delta", "ils_delta", "usd_balance", "ils_balance"])
+        return _empty_result()
 
     for col in ("action_type", "symbol", "paper_name"):
         if col not in df.columns:
@@ -34,41 +42,46 @@ def balance_timeline_daily(ledger_df: pd.DataFrame) -> pd.DataFrame:
 
     df = df[is_transfer | is_conversion].copy()
     if df.empty:
-        return pd.DataFrame(columns=["day", "note", "usd_delta", "ils_delta", "usd_balance", "ils_balance"])
+        return _empty_result()
 
     df["day"] = df["date"].dt.normalize()
 
-    usd_source = "net_usd" if "net_usd" in df.columns else "gross_usd"
     ils_source = "net_ils" if "net_ils" in df.columns else "gross_ils"
+    df["ils_delta_row"] = pd.to_numeric(df[ils_source], errors="coerce").fillna(0.0)
 
-    df["usd_delta"] = pd.to_numeric(df[usd_source], errors="coerce").fillna(0.0)
-    df["ils_delta"] = pd.to_numeric(df[ils_source], errors="coerce").fillna(0.0)
+    if "quantity" not in df.columns:
+        df["quantity"] = 0.0
+    df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce").fillna(0.0)
 
-    # Aggregate daily totals and keep unique paper_name values for rate text.
+    # Conversion USD delta must come from raw quantity (always positive for this action).
+    df["usd_delta_row"] = 0.0
+    conversion_mask = (df["action_type"] == conversion_action) & (df["symbol"] == "99028")
+    df.loc[conversion_mask, "usd_delta_row"] = df.loc[conversion_mask, "quantity"]
+
     daily = (
         df.groupby("day", as_index=False)
         .agg(
-            usd_delta=("usd_delta", "sum"),
-            ils_delta=("ils_delta", "sum"),
+            usd_delta=("usd_delta_row", "sum"),
+            ils_delta=("ils_delta_row", "sum"),
             fx_info=(
                 "paper_name",
-                lambda s: "; ".join(dict.fromkeys([v for v in s if isinstance(v, str) and v.strip()])),
+                lambda s: "; ".join(dict.fromkeys([v for v in s.tolist() if isinstance(v, str) and v.strip()])),
             ),
         )
         .fillna({"fx_info": ""})
     )
 
     transfer_daily = (
-        df[is_transfer.loc[df.index]]
-        .groupby("day", as_index=False)["ils_delta"]
+        df[df["action_type"] == transfer_action]
+        .groupby("day", as_index=False)["ils_delta_row"]
         .sum()
-        .rename(columns={"ils_delta": "ils_deposit_ils"})
+        .rename(columns={"ils_delta_row": "ils_deposit_ils"})
     )
 
     conversion_daily = (
-        df[is_conversion.loc[df.index]]
+        df[(df["action_type"] == conversion_action) & (df["symbol"] == "99028")]
         .groupby("day", as_index=False)
-        .agg(conv_usd=("usd_delta", "sum"), conv_ils=("ils_delta", "sum"))
+        .agg(conv_usd=("usd_delta_row", "sum"), conv_ils=("ils_delta_row", "sum"))
     )
 
     out = daily.merge(transfer_daily, on="day", how="left").merge(conversion_daily, on="day", how="left")
@@ -82,24 +95,24 @@ def balance_timeline_daily(ledger_df: pd.DataFrame) -> pd.DataFrame:
 
         has_conversion = (row["conv_usd"] != 0) or (row["conv_ils"] != 0)
         if has_conversion:
-            conv_text = (
+            conversion_text = (
                 f"ILS->USD conversion: {_format_amount(row['conv_ils'], 'ILS')}, "
                 f"{_format_amount(row['conv_usd'], 'USD')}"
             )
             if row["fx_info"]:
-                conv_text = f"{conv_text} (rate: {row['fx_info']})"
-            parts.append(conv_text)
+                conversion_text = f"{conversion_text} (rate: {row['fx_info']})"
+            parts.append(conversion_text)
 
         return "; ".join(parts)
 
-    out["note"] = out.apply(build_note, axis=1)
+    out["note"] = out.apply(build_note, axis=1).fillna("").astype("string")
 
     out.sort_values(by="day", inplace=True, kind="mergesort")
     out.reset_index(drop=True, inplace=True)
     out["usd_balance"] = out["usd_delta"].cumsum()
     out["ils_balance"] = out["ils_delta"].cumsum()
 
-    return out[["day", "note", "usd_delta", "ils_delta", "usd_balance", "ils_balance"]]
+    return out[EMPTY_COLUMNS]
 
 
 __all__ = ["balance_timeline_daily"]
