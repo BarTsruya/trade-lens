@@ -8,7 +8,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from trade_lens.analytics.balance import balance_timeline_daily
+from trade_lens.analytics.balance import balance_timeline_actions
 from trade_lens.analytics.cashflow import monthly_fees_breakdown
 from trade_lens.brokers.ibi import IbiRawLoader
 from trade_lens.pipeline.normalize import to_ledger
@@ -115,17 +115,17 @@ with tab_ledger:
 with tab_balance:
     st.subheader("Balance")
     st.caption(
-        "Aggregated daily balance computed from ILS deposits (transfer_cash_shekel) and "
-        "ILS->USD conversions (purchase_shekel symbol 99028). USD deposits are not included yet."
+        "Action-level cash timeline with running balances based on cash-affecting rows."
     )
+    st.caption("Index matches Ledger row index for traceability.")
 
-    balance_df = balance_timeline_daily(ledger)
+    balance_df = balance_timeline_actions(ledger)
 
     if balance_df.empty:
         st.warning("No balance actions found for these action types.")
     else:
         balance_display_df = df_dates_to_date_only(balance_df)
-        st.dataframe(balance_display_df, width="stretch", hide_index=True)
+        st.dataframe(balance_display_df, width="stretch", hide_index=False)
         balance_long = balance_display_df.melt(
             id_vars=["date"],
             value_vars=["usd_balance", "ils_balance"],
