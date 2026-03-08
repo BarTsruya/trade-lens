@@ -69,7 +69,9 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
     is_trade = df[action_col].isin(BUY_SELL_ACTIONS)
 
     df["delta_usd"] = df["raw_usd"]
-    df.loc[is_trade, "delta_usd"] = df.loc[is_trade, "raw_usd"] - df.loc[is_trade, "fees_usd"]
+    # IBI total_value_foreign is net cash effect including fees.
+    # Add fees back for buy/sell so delta_usd represents gross transaction value excluding fees.
+    df.loc[is_trade, "delta_usd"] = df.loc[is_trade, "raw_usd"] + df.loc[is_trade, "fees_usd"]
 
     # Keep ILS cash movement as the raw shekel effect per row.
     df["delta_ils"] = df["raw_ils"]
