@@ -140,9 +140,9 @@ with tab_cashflow:
         fig_cashflow = px.bar(
             cashflow_display_df,
             x="month",
-            y="net_usd_sum",
+            y="delta_usd_sum",
             title="Monthly Net Cashflow (USD)",
-            labels={"month": "Month", "net_usd_sum": "Net USD"},
+            labels={"month": "Month", "delta_usd_sum": "Net USD"},
         )
         fig_cashflow.update_layout(xaxis_title="Month", yaxis_title="Net USD")
         st.plotly_chart(fig_cashflow, width="stretch")
@@ -159,7 +159,7 @@ with tab_fees:
         fees_display_df = df_dates_to_date_only(fees_df)
         fees_long = fees_display_df.melt(
             id_vars=["month"],
-            value_vars=["embedded_fees_usd", "cash_handling_gross_ils"],
+            value_vars=["embedded_fees_usd", "cash_handling_delta_ils"],
             var_name="fee_type",
             value_name="amount",
         )

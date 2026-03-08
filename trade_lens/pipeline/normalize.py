@@ -12,12 +12,13 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
     Canonical output columns:
       - date
       - action_type
-      - symbol
-      - gross_usd (signed, from total_value_foreign)
-      - fees_usd (>= 0, from commission_fee + additional_fees; IBI export uses USD fees)
-      - net_usd (signed)
-      - gross_ils (signed, from total_value_shekel; may be 0 for trade rows)
-      - net_ils (signed; v1: equals gross_ils, no FX conversion and no fee subtraction)
+            - symbol
+            - paper_name
+            - quantity
+            - execution_price
+            - delta_usd (signed)
+            - delta_ils (signed)
+            - fees_usd (>= 0, USD fees magnitude)
     """
     df = raw_df.copy()
 
@@ -26,6 +27,7 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
     symbol_col = RawDataAttribute.PAPER_SYMBOL.value
     paper_name_col = RawDataAttribute.PAPER_NAME.value
     quantity_col = RawDataAttribute.QUANTITY.value
+    execution_price_col = RawDataAttribute.EXECUTION_PRICE.value
 
     gross_usd_col = RawDataAttribute.TOTAL_VALUE_FOREIGN.value
     gross_ils_col = RawDataAttribute.TOTAL_VALUE_SHEKEL.value
@@ -38,12 +40,12 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
             raise ValueError(f"Missing required column {col!r} in raw_df")
 
     # numeric coercion
-    for col in (gross_usd_col, gross_ils_col, commission_col, add_fees_col, quantity_col):
+    for col in (gross_usd_col, gross_ils_col, commission_col, add_fees_col, quantity_col, execution_price_col):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    df["gross_usd"] = df[gross_usd_col].fillna(0.0) if gross_usd_col in df.columns else 0.0
-    df["gross_ils"] = df[gross_ils_col].fillna(0.0) if gross_ils_col in df.columns else 0.0
+    df["raw_usd"] = df[gross_usd_col].fillna(0.0) if gross_usd_col in df.columns else 0.0
+    df["raw_ils"] = df[gross_ils_col].fillna(0.0) if gross_ils_col in df.columns else 0.0
 
     # Fees are ALWAYS in USD in your IBI export
     df["fees_usd"] = 0.0
@@ -51,15 +53,23 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
         df["fees_usd"] = df["fees_usd"] + df[commission_col].fillna(0.0)
     if add_fees_col in df.columns:
         df["fees_usd"] = df["fees_usd"] + df[add_fees_col].fillna(0.0)
+    df["fees_usd"] = df["fees_usd"].abs()
 
     df[action_col] = df[action_col].astype("string")
     is_trade = df[action_col].isin(BUY_SELL_ACTIONS)
 
-    df["net_usd"] = df["gross_usd"]
-    df.loc[is_trade, "net_usd"] = df.loc[is_trade, "gross_usd"] - df.loc[is_trade, "fees_usd"]
+    df["delta_usd"] = df["raw_usd"]
+    df.loc[is_trade, "delta_usd"] = df.loc[is_trade, "raw_usd"] - df.loc[is_trade, "fees_usd"]
 
-    # v1: do not convert and do not subtract USD fees from ILS amounts
-    df["net_ils"] = df["gross_ils"]
+    # Keep ILS cash movement as the raw shekel effect per row.
+    df["delta_ils"] = df["raw_ils"]
+
+    symbol_series = (
+        df[symbol_col].astype("string") if symbol_col in df.columns else pd.Series("", index=df.index, dtype="string")
+    )
+    conversion_mask = (df[action_col] == RawActionType.PURCHASE_SHEKEL.value) & (symbol_series == "99028")
+    if quantity_col in df.columns:
+        df.loc[conversion_mask, "delta_usd"] = df.loc[conversion_mask, quantity_col].fillna(0.0)
 
     out = pd.DataFrame(
         {
@@ -68,13 +78,15 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
             "symbol": df[symbol_col] if symbol_col in df.columns else None,
             "paper_name": df[paper_name_col].fillna("").astype("string") if paper_name_col in df.columns else "",
             "quantity": df[quantity_col].fillna(0.0) if quantity_col in df.columns else 0.0,
-            "gross_usd": df["gross_usd"],
+            "execution_price": df[execution_price_col].fillna(0.0) if execution_price_col in df.columns else 0.0,
+            "delta_usd": df["delta_usd"],
+            "delta_ils": df["delta_ils"],
             "fees_usd": df["fees_usd"],
-            "net_usd": df["net_usd"],
-            "gross_ils": df["gross_ils"],
-            "net_ils": df["net_ils"],
         }
     )
+
+    for col in ("quantity", "execution_price", "delta_usd", "delta_ils", "fees_usd"):
+        out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0.0)
 
     out.sort_values(by="date", inplace=True, kind="mergesort", na_position="last")
     out.reset_index(drop=True, inplace=True)

@@ -44,19 +44,37 @@ def balance_timeline_daily(ledger_df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return _empty_result()
 
+    if "delta_ils" not in df.columns or "delta_usd" not in df.columns:
+        return _empty_result()
+
     df["day"] = df["date"].dt.normalize()
 
-    ils_source = "net_ils" if "net_ils" in df.columns else "gross_ils"
-    df["ils_delta_row"] = pd.to_numeric(df[ils_source], errors="coerce").fillna(0.0)
+    df["ils_delta_row"] = pd.to_numeric(df["delta_ils"], errors="coerce").fillna(0.0)
+
+    conversion_mask = (df["action_type"] == conversion_action) & (df["symbol"] == "99028")
+    has_conversion_rows = bool(conversion_mask.any())
+    if has_conversion_rows and "quantity" not in df.columns:
+        raise ValueError(
+            "Ledger is missing 'quantity' column required to compute USD delta for conversions. "
+            "Update to_ledger() to include quantity."
+        )
 
     if "quantity" not in df.columns:
         df["quantity"] = 0.0
     df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce").fillna(0.0)
+    if has_conversion_rows:
+        conversion_qty = df.loc[conversion_mask, "quantity"]
+        if (abs(conversion_qty.sum()) < 1e-12) or conversion_qty.eq(0).all():
+            raise ValueError(
+                "Conversion rows detected but 'quantity' sums to 0 (or all values are 0). "
+                "The raw export or normalization is likely missing Quantity."
+            )
 
-    # Conversion USD delta must come from raw quantity (always positive for this action).
+    # Conversion USD delta should come from canonical delta_usd (which normalization maps from quantity).
     df["usd_delta_row"] = 0.0
-    conversion_mask = (df["action_type"] == conversion_action) & (df["symbol"] == "99028")
-    df.loc[conversion_mask, "usd_delta_row"] = df.loc[conversion_mask, "quantity"]
+    df.loc[conversion_mask, "usd_delta_row"] = pd.to_numeric(
+        df.loc[conversion_mask, "delta_usd"], errors="coerce"
+    ).fillna(0.0)
 
     daily = (
         df.groupby("day", as_index=False)

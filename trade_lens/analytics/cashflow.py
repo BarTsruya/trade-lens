@@ -14,12 +14,12 @@ def monthly_net_cashflow(
     """
     Returns monthly sums for net cashflow.
 
-    currency: "USD" -> uses net_usd, "ILS" -> uses net_ils
+    currency: "USD" -> uses delta_usd, "ILS" -> uses delta_ils
     """
     df = ledger_df.copy()
     df["month"] = pd.to_datetime(df["date"], errors="coerce").dt.to_period("M").dt.to_timestamp()
 
-    value_col = "net_usd" if currency.upper() == "USD" else "net_ils"
+    value_col = "delta_usd" if currency.upper() == "USD" else "delta_ils"
 
     if not include_deposits:
         allowed = {
@@ -40,7 +40,7 @@ def monthly_fees_breakdown(ledger_df: pd.DataFrame) -> pd.DataFrame:
 
     Notes:
     - IBI commission_fee/additional_fees are USD in your export -> aggregated as `fees_usd`
-    - Cash handling fee is an ILS cashflow action -> aggregated from `gross_ils`
+    - Cash handling fee is an ILS cashflow action -> aggregated from `delta_ils`
     """
     df = ledger_df.copy()
     df["month"] = pd.to_datetime(df["date"], errors="coerce").dt.to_period("M").dt.to_timestamp()
@@ -54,9 +54,9 @@ def monthly_fees_breakdown(ledger_df: pd.DataFrame) -> pd.DataFrame:
 
     cash = (
         df[df["action_type"] == RawActionType.CASH_HANDLING_FEE_SHEKEL.value]
-        .groupby("month", dropna=True, as_index=False)["gross_ils"]
+        .groupby("month", dropna=True, as_index=False)["delta_ils"]
         .sum()
-        .rename(columns={"gross_ils": "cash_handling_gross_ils"})
+        .rename(columns={"delta_ils": "cash_handling_delta_ils"})
     )
 
     return embedded.merge(cash, on="month", how="outer").fillna(0.0)
