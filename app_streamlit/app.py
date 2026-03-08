@@ -38,6 +38,15 @@ def df_dates_to_date_only(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _format_signed_currency(value: object, symbol: str) -> str:
+    """Format numeric values as signed currency with sign before symbol."""
+    numeric = pd.to_numeric(value, errors="coerce")
+    if pd.isna(numeric):
+        return ""
+    prefix = "-" if numeric < 0 else ""
+    return f"{prefix}{symbol}{abs(float(numeric)):,.2f}"
+
+
 @st.cache_data(show_spinner=False)
 def load_and_normalize(file_bytes: bytes, file_name: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Load uploaded xlsx with IbiRawLoader, then normalize into ledger schema."""
@@ -95,7 +104,16 @@ with tab_ledger:
     stat_col2.metric("Date From", "N/A" if pd.isna(min_date) else str(min_date.date()))
     stat_col3.metric("Date To", "N/A" if pd.isna(max_date) else str(max_date.date()))
 
-    st.dataframe(df_dates_to_date_only(ledger), width="stretch", hide_index=True)
+    ledger_display_df = df_dates_to_date_only(ledger)
+    for usd_col in ("execution_price", "delta_usd", "fees_usd", "estimated_capital_gains_tax"):
+        if usd_col in ledger_display_df.columns:
+            ledger_display_df[usd_col] = ledger_display_df[usd_col].map(lambda v: _format_signed_currency(v, "$"))
+    if "delta_ils" in ledger_display_df.columns:
+        ledger_display_df["delta_ils"] = ledger_display_df["delta_ils"].map(
+            lambda v: _format_signed_currency(v, "₪")
+        )
+
+    st.dataframe(ledger_display_df, width="stretch", hide_index=True)
 
 with tab_balance:
     st.subheader("Balance")

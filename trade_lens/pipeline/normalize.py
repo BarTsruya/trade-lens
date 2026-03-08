@@ -19,6 +19,7 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
             - delta_usd (signed)
             - delta_ils (signed)
             - fees_usd (>= 0, USD fees magnitude)
+            - estimated_capital_gains_tax
     """
     df = raw_df.copy()
 
@@ -28,6 +29,7 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
     paper_name_col = RawDataAttribute.PAPER_NAME.value
     quantity_col = RawDataAttribute.QUANTITY.value
     execution_price_col = RawDataAttribute.EXECUTION_PRICE.value
+    estimated_tax_col = RawDataAttribute.ESTIMATED_CAPITAL_GAINS_TAX.value
 
     gross_usd_col = RawDataAttribute.TOTAL_VALUE_FOREIGN.value
     gross_ils_col = RawDataAttribute.TOTAL_VALUE_SHEKEL.value
@@ -40,7 +42,15 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
             raise ValueError(f"Missing required column {col!r} in raw_df")
 
     # numeric coercion
-    for col in (gross_usd_col, gross_ils_col, commission_col, add_fees_col, quantity_col, execution_price_col):
+    for col in (
+        gross_usd_col,
+        gross_ils_col,
+        commission_col,
+        add_fees_col,
+        quantity_col,
+        execution_price_col,
+        estimated_tax_col,
+    ):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
@@ -82,10 +92,18 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
             "delta_usd": df["delta_usd"],
             "delta_ils": df["delta_ils"],
             "fees_usd": df["fees_usd"],
+            "estimated_capital_gains_tax": df[estimated_tax_col].fillna(0.0) if estimated_tax_col in df.columns else 0.0,
         }
     )
 
-    for col in ("quantity", "execution_price", "delta_usd", "delta_ils", "fees_usd"):
+    for col in (
+        "quantity",
+        "execution_price",
+        "estimated_capital_gains_tax",
+        "delta_usd",
+        "delta_ils",
+        "fees_usd",
+    ):
         out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0.0)
 
     out.sort_values(by="date", inplace=True, kind="mergesort", na_position="last")
