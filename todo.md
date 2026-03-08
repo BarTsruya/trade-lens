@@ -1,5 +1,6 @@
-
-- [] replace all dates displays to date only format(without hour, minute, second)
+- [] replace USD and ILD with $ and shekel symmbol
 - [] create an option to upload multiple excel files
     - we should merge them all to one ledger table
 - [] add filtering feature in ledger tab
+    - by action types
+    - by dates
