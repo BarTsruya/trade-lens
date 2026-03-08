@@ -102,6 +102,8 @@ with tab_ledger:
     stat_col3.metric("Date To", "N/A" if pd.isna(max_date) else str(max_date.date()))
 
     ledger_display_df = df_dates_to_date_only(ledger)
+    if "execution_price" in ledger_display_df.columns:
+        ledger_display_df = ledger_display_df.drop(columns=["execution_price"])
     for usd_col in ("execution_price", "delta_usd", "fees_usd", "estimated_capital_gains_tax"):
         if usd_col in ledger_display_df.columns:
             ledger_display_df[usd_col] = ledger_display_df[usd_col].map(lambda v: _format_signed_currency(v, "$"))
@@ -110,7 +112,7 @@ with tab_ledger:
             lambda v: _format_signed_currency(v, "₪")
         )
 
-    st.dataframe(ledger_display_df, width="stretch", hide_index=True)
+    st.dataframe(ledger_display_df, width="stretch", hide_index=False)
 
 with tab_balance:
     st.subheader("Balance")
@@ -125,7 +127,15 @@ with tab_balance:
         st.warning("No balance actions found for these action types.")
     else:
         balance_display_df = df_dates_to_date_only(balance_df)
-        st.dataframe(balance_display_df, width="stretch", hide_index=False)
+        balance_table_df = balance_display_df.copy()
+        for usd_col in ("usd_delta", "fees_usd", "usd_balance"):
+            if usd_col in balance_table_df.columns:
+                balance_table_df[usd_col] = balance_table_df[usd_col].map(lambda v: _format_signed_currency(v, "$"))
+        for ils_col in ("ils_delta", "ils_balance"):
+            if ils_col in balance_table_df.columns:
+                balance_table_df[ils_col] = balance_table_df[ils_col].map(lambda v: _format_signed_currency(v, "₪"))
+
+        st.dataframe(balance_table_df, width="stretch", hide_index=False)
         balance_long = balance_display_df.melt(
             id_vars=["date"],
             value_vars=["usd_balance", "ils_balance"],

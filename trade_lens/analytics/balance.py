@@ -10,8 +10,7 @@ from trade_lens.brokers.ibi import RawActionType
 EMPTY_COLUMNS = [
     "date",
     "action_type",
-    "symbol",
-    "note",
+    "description",
     "usd_delta",
     "ils_delta",
     "fees_usd",
@@ -47,7 +46,7 @@ def balance_timeline_actions(ledger_df: pd.DataFrame) -> pd.DataFrame:
             df[col] = ""
         df[col] = df[col].fillna("").astype("string")
 
-    for col in ("delta_usd", "delta_ils", "fees_usd", "quantity"):
+    for col in ("delta_usd", "delta_ils", "fees_usd", "quantity", "execution_price"):
         if col not in df.columns:
             df[col] = 0.0
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
@@ -60,11 +59,15 @@ def balance_timeline_actions(ledger_df: pd.DataFrame) -> pd.DataFrame:
 
     transfer_action = RawActionType.TRANSFER_CASH_SHEKEL.value
     conversion_action = RawActionType.PURCHASE_SHEKEL.value
+    other_cash_action = RawActionType.OTHER_CASH_SHEKEL.value
+    buy_action = RawActionType.BUY.value
+    sell_action = RawActionType.SELL.value
 
     def build_note(row: pd.Series) -> str:
         action_type = str(row.get("action_type", "") or "")
         symbol = str(row.get("symbol", "") or "")
         quantity = float(row.get("quantity", 0.0) or 0.0)
+        execution_price = float(row.get("execution_price", 0.0) or 0.0)
         fees_usd = float(row.get("fees_usd", 0.0) or 0.0)
         usd_delta = float(row.get("delta_usd", 0.0) or 0.0)
         ils_delta = float(row.get("delta_ils", 0.0) or 0.0)
@@ -79,6 +82,14 @@ def balance_timeline_actions(ledger_df: pd.DataFrame) -> pd.DataFrame:
                 conversion_text = f"{conversion_text} (rate: {paper_name})"
             return conversion_text
 
+        if action_type == other_cash_action:
+            return paper_name or action_type
+
+        if action_type in (buy_action, sell_action):
+            symbol_part = f" {symbol}" if symbol else ""
+            total_cost = abs(execution_price * quantity)
+            return f"{action_type}{symbol_part}, total cost: {total_cost:,.2f} USD"
+
         parts: List[str] = [action_type]
         if symbol:
             parts.append(symbol)
@@ -91,12 +102,22 @@ def balance_timeline_actions(ledger_df: pd.DataFrame) -> pd.DataFrame:
             note = f"{note}; {fee_text}" if note else fee_text
         return note
 
-    out["note"] = out.apply(build_note, axis=1).fillna("").astype("string")
+    out["description"] = out.apply(build_note, axis=1).fillna("").astype("string")
 
     # Keep the original ledger index labels for traceability.
     out.sort_values(by=["date", "_seq"], inplace=True, kind="mergesort")
 
     out["usd_delta"] = out["delta_usd"]
+    trade_mask = out["action_type"].isin([buy_action, sell_action])
+    if trade_mask.any():
+        total_cost_usd = out["execution_price"].abs() * out["quantity"].abs()
+        fee_usd = out["fees_usd"].abs()
+        buy_mask = out["action_type"] == buy_action
+        sell_mask = out["action_type"] == sell_action
+
+        out.loc[buy_mask, "usd_delta"] = -(total_cost_usd.loc[buy_mask] + fee_usd.loc[buy_mask])
+        out.loc[sell_mask, "usd_delta"] = total_cost_usd.loc[sell_mask] - fee_usd.loc[sell_mask]
+
     out["ils_delta"] = out["delta_ils"]
     out["usd_balance"] = out["usd_delta"].cumsum()
     out["ils_balance"] = out["ils_delta"].cumsum()
