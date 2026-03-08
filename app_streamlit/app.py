@@ -9,8 +9,7 @@ import plotly.express as px
 import streamlit as st
 
 from trade_lens.analytics.balance import balance_timeline_daily
-from trade_lens.analytics.cashflow import monthly_fees_breakdown, monthly_net_cashflow
-from trade_lens.analytics.symbols import symbol_summary
+from trade_lens.analytics.cashflow import monthly_fees_breakdown
 from trade_lens.brokers.ibi import IbiRawLoader
 from trade_lens.pipeline.normalize import to_ledger
 
@@ -88,9 +87,7 @@ except Exception as exc:
 
 st.success(f"Loaded {len(raw):,} raw rows and normalized to {len(ledger):,} ledger rows.")
 
-tab_ledger, tab_balance, tab_cashflow, tab_fees, tab_symbols = st.tabs(
-    ["Ledger", "Balance", "Cashflow", "Fees", "Symbols"]
-)
+tab_ledger, tab_balance, tab_fees = st.tabs(["Ledger", "Balance", "Fees"])
 
 with tab_ledger:
     st.subheader("Ledger Preview")
@@ -145,27 +142,6 @@ with tab_balance:
         )
         st.plotly_chart(fig_balance, width="stretch")
 
-with tab_cashflow:
-    st.subheader("Monthly Net Cashflow (USD)")
-
-    include_deposits = st.checkbox("Include deposits", value=True)
-    cashflow_df = monthly_net_cashflow(ledger, currency="USD", include_deposits=include_deposits)
-
-    if cashflow_df.empty:
-        st.warning("No cashflow data available.")
-    else:
-        cashflow_display_df = df_dates_to_date_only(cashflow_df)
-        fig_cashflow = px.bar(
-            cashflow_display_df,
-            x="month",
-            y="delta_usd_sum",
-            title="Monthly Net Cashflow (USD)",
-            labels={"month": "Month", "delta_usd_sum": "Net USD"},
-        )
-        fig_cashflow.update_layout(xaxis_title="Month", yaxis_title="Net USD")
-        st.plotly_chart(fig_cashflow, width="stretch")
-        st.dataframe(cashflow_display_df, width="stretch", hide_index=True)
-
 with tab_fees:
     st.subheader("Monthly Fees Breakdown")
 
@@ -192,15 +168,3 @@ with tab_fees:
         )
         st.plotly_chart(fig_fees, width="stretch")
         st.dataframe(fees_display_df, width="stretch", hide_index=True)
-
-with tab_symbols:
-    st.subheader("Top Symbols (USD)")
-
-    symbols_df = symbol_summary(ledger, currency="USD")
-    top_n = st.slider("Top N symbols", min_value=5, max_value=100, value=20, step=5)
-
-    if symbols_df.empty:
-        st.warning("No symbol activity data available.")
-    else:
-        symbols_display_df = df_dates_to_date_only(symbols_df)
-        st.dataframe(symbols_display_df.head(top_n), width="stretch", hide_index=True)
