@@ -20,6 +20,24 @@ st.title("Trade Lens - IBI Actions Explorer")
 st.caption("Upload an IBI actions .xlsx export to inspect ledger, cashflow, fees, and symbol activity.")
 
 
+def df_dates_to_date_only(df: pd.DataFrame) -> pd.DataFrame:
+    """Return a copy with date-like columns converted to Python date values."""
+    out = df.copy()
+    for col in out.columns:
+        is_named_date = col == "date" or col.endswith("_date")
+        is_datetime_dtype = pd.api.types.is_datetime64_any_dtype(out[col])
+        if not (is_named_date or is_datetime_dtype):
+            continue
+        try:
+            converted = pd.to_datetime(out[col], errors="coerce")
+            if converted.notna().any():
+                out[col] = converted.dt.date
+        except Exception:
+            # Keep original column unchanged if conversion is not possible.
+            continue
+    return out
+
+
 @st.cache_data(show_spinner=False)
 def load_and_normalize(file_bytes: bytes, file_name: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Load uploaded xlsx with IbiRawLoader, then normalize into ledger schema."""
@@ -77,7 +95,7 @@ with tab_ledger:
     stat_col2.metric("Date From", "N/A" if pd.isna(min_date) else str(min_date.date()))
     stat_col3.metric("Date To", "N/A" if pd.isna(max_date) else str(max_date.date()))
 
-    st.dataframe(ledger, width="stretch", hide_index=True)
+    st.dataframe(df_dates_to_date_only(ledger), width="stretch", hide_index=True)
 
 with tab_balance:
     st.subheader("Balance")
@@ -91,8 +109,9 @@ with tab_balance:
     if balance_df.empty:
         st.warning("No balance actions found for these action types.")
     else:
-        st.dataframe(balance_df, width="stretch", hide_index=True)
-        balance_long = balance_df.melt(
+        balance_display_df = df_dates_to_date_only(balance_df)
+        st.dataframe(balance_display_df, width="stretch", hide_index=True)
+        balance_long = balance_display_df.melt(
             id_vars=["date"],
             value_vars=["usd_balance", "ils_balance"],
             var_name="balance_type",
@@ -117,8 +136,9 @@ with tab_cashflow:
     if cashflow_df.empty:
         st.warning("No cashflow data available.")
     else:
+        cashflow_display_df = df_dates_to_date_only(cashflow_df)
         fig_cashflow = px.bar(
-            cashflow_df,
+            cashflow_display_df,
             x="month",
             y="net_usd_sum",
             title="Monthly Net Cashflow (USD)",
@@ -126,7 +146,7 @@ with tab_cashflow:
         )
         fig_cashflow.update_layout(xaxis_title="Month", yaxis_title="Net USD")
         st.plotly_chart(fig_cashflow, width="stretch")
-        st.dataframe(cashflow_df, width="stretch", hide_index=True)
+        st.dataframe(cashflow_display_df, width="stretch", hide_index=True)
 
 with tab_fees:
     st.subheader("Monthly Fees Breakdown")
@@ -136,7 +156,8 @@ with tab_fees:
     if fees_df.empty:
         st.warning("No fees data available.")
     else:
-        fees_long = fees_df.melt(
+        fees_display_df = df_dates_to_date_only(fees_df)
+        fees_long = fees_display_df.melt(
             id_vars=["month"],
             value_vars=["embedded_fees_usd", "cash_handling_gross_ils"],
             var_name="fee_type",
@@ -152,7 +173,7 @@ with tab_fees:
             labels={"month": "Month", "amount": "Amount", "fee_type": "Fee Type"},
         )
         st.plotly_chart(fig_fees, width="stretch")
-        st.dataframe(fees_df, width="stretch", hide_index=True)
+        st.dataframe(fees_display_df, width="stretch", hide_index=True)
 
 with tab_symbols:
     st.subheader("Top Symbols (USD)")
@@ -163,4 +184,5 @@ with tab_symbols:
     if symbols_df.empty:
         st.warning("No symbol activity data available.")
     else:
-        st.dataframe(symbols_df.head(top_n), width="stretch", hide_index=True)
+        symbols_display_df = df_dates_to_date_only(symbols_df)
+        st.dataframe(symbols_display_df.head(top_n), width="stretch", hide_index=True)
