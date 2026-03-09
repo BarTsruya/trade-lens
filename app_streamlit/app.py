@@ -47,45 +47,84 @@ def _format_signed_currency(value: object, symbol: str) -> str:
 
 
 @st.cache_data(show_spinner=False)
-def load_and_normalize(file_bytes: bytes, file_name: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """Load uploaded xlsx with IbiRawLoader, then normalize into ledger schema."""
-    suffix = Path(file_name).suffix or ".xlsx"
-    temp_path: Optional[str] = None
+def load_and_normalize_many(file_payloads: Tuple[Tuple[str, bytes], ...]) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Load multiple uploaded xlsx files and return combined raw and normalized ledgers."""
+    raw_frames: list[pd.DataFrame] = []
+    ledger_frames: list[pd.DataFrame] = []
 
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            tmp.write(file_bytes)
-            temp_path = tmp.name
+    for file_name, file_bytes in file_payloads:
+        suffix = Path(file_name).suffix or ".xlsx"
+        temp_path: Optional[str] = None
 
-        raw_df = IbiRawLoader(temp_path).load()
-        ledger_df = to_ledger(raw_df)
-        # Ensure Arrow-friendly dtypes for Streamlit dataframe serialization.
-        if "symbol" in ledger_df.columns:
-            ledger_df["symbol"] = ledger_df["symbol"].fillna("").astype("string")
-        if "action_type" in ledger_df.columns:
-            ledger_df["action_type"] = ledger_df["action_type"].fillna("").astype("string")
-        if "paper_name" in ledger_df.columns:
-            ledger_df["paper_name"] = ledger_df["paper_name"].fillna("").astype("string")
-        return raw_df, ledger_df
-    finally:
-        if temp_path:
-            Path(temp_path).unlink(missing_ok=True)
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                tmp.write(file_bytes)
+                temp_path = tmp.name
+
+            raw_df_i = IbiRawLoader(temp_path).load()
+            raw_df_i = raw_df_i.copy()
+            raw_df_i["source_file"] = file_name
+
+            ledger_df_i = to_ledger(raw_df_i)
+            ledger_df_i = ledger_df_i.copy()
+            ledger_df_i["source_file"] = file_name
+            ledger_df_i["ledger_row_id"] = [f"{file_name}:{idx}" for idx in ledger_df_i.index]
+
+            raw_frames.append(raw_df_i)
+            ledger_frames.append(ledger_df_i)
+        finally:
+            if temp_path:
+                Path(temp_path).unlink(missing_ok=True)
+
+    if not raw_frames or not ledger_frames:
+        return pd.DataFrame(), pd.DataFrame()
+
+    raw_all = pd.concat(raw_frames, ignore_index=True)
+    ledger_all = pd.concat(ledger_frames, ignore_index=True)
+
+    # Ensure Arrow-friendly dtypes for Streamlit dataframe serialization.
+    for col in ("symbol", "action_type", "paper_name", "source_file", "ledger_row_id"):
+        if col in ledger_all.columns:
+            ledger_all[col] = ledger_all[col].fillna("").astype("string")
+
+    ledger_dt = pd.to_datetime(ledger_all.get("date"), errors="coerce")
+    ledger_all = ledger_all.loc[ledger_dt.notna()].copy()
+    ledger_all["_date_sort"] = pd.to_datetime(ledger_all["date"], errors="coerce")
+    ledger_all.sort_values(by=["_date_sort", "ledger_row_id"], inplace=True, kind="mergesort")
+    ledger_all.drop(columns=["_date_sort"], inplace=True)
+    ledger_all.reset_index(drop=True, inplace=True)
+
+    return raw_all, ledger_all
 
 
-uploaded_file = st.file_uploader("Upload IBI actions export", type=["xlsx"])
+uploaded_files = st.file_uploader("Upload IBI actions export", type=["xlsx"], accept_multiple_files=True)
 
-if uploaded_file is None:
-    st.info("Upload an .xlsx file to begin.")
+if not uploaded_files:
+    st.info("Upload one or more .xlsx files to begin.")
     st.stop()
 
 try:
-    raw, ledger = load_and_normalize(uploaded_file.getvalue(), uploaded_file.name)
+    payloads = tuple((uploaded_file.name, uploaded_file.getvalue()) for uploaded_file in uploaded_files)
+    raw, ledger = load_and_normalize_many(payloads)
 except Exception as exc:
-    st.error("Could not load this file. Make sure it is a valid IBI actions .xlsx export.")
+    st.error("Could not load these files. Make sure each is a valid IBI actions .xlsx export.")
     st.exception(exc)
     st.stop()
 
-st.success(f"Loaded {len(raw):,} raw rows and normalized to {len(ledger):,} ledger rows.")
+# Re-apply stable date sorting on each rerun (including when files are added/removed).
+if "date" in ledger.columns:
+    ledger_date_sort = pd.to_datetime(ledger["date"], errors="coerce")
+    ledger = ledger.loc[ledger_date_sort.notna()].copy()
+    ledger["_date_sort"] = pd.to_datetime(ledger["date"], errors="coerce")
+    secondary_sort_col = "source_file" if "source_file" in ledger.columns else None
+    sort_cols = ["_date_sort"] + ([secondary_sort_col] if secondary_sort_col else [])
+    ledger.sort_values(by=sort_cols, inplace=True, kind="mergesort")
+    ledger.drop(columns=["_date_sort"], inplace=True)
+    ledger.reset_index(drop=True, inplace=True)
+
+st.success(
+    f"Loaded {len(uploaded_files):,} file(s): {len(raw):,} raw rows and normalized to {len(ledger):,} ledger rows."
+)
 
 tab_ledger, tab_balance, tab_fees = st.tabs(["Ledger", "Balance", "Fees"])
 
@@ -104,6 +143,8 @@ with tab_ledger:
     ledger_display_df = df_dates_to_date_only(ledger)
     if "execution_price" in ledger_display_df.columns:
         ledger_display_df = ledger_display_df.drop(columns=["execution_price"])
+    if "ledger_row_id" in ledger_display_df.columns:
+        ledger_display_df = ledger_display_df.drop(columns=["ledger_row_id"])
     for usd_col in ("execution_price", "delta_usd", "fees_usd", "estimated_capital_gains_tax"):
         if usd_col in ledger_display_df.columns:
             ledger_display_df[usd_col] = ledger_display_df[usd_col].map(lambda v: _format_signed_currency(v, "$"))
@@ -119,7 +160,7 @@ with tab_balance:
     st.caption(
         "Action-level cash timeline with running balances based on cash-affecting rows."
     )
-    st.caption("Index matches Ledger row index for traceability.")
+    st.caption("Index matches the Ledger table index for traceability.")
 
     balance_df = balance_timeline_actions(ledger)
 
