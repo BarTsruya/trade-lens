@@ -122,9 +122,20 @@ if "date" in ledger.columns:
     ledger.drop(columns=["_date_sort"], inplace=True)
     ledger.reset_index(drop=True, inplace=True)
 
-st.success(
-    f"Loaded {len(uploaded_files):,} file(s): {len(raw):,} raw rows and normalized to {len(ledger):,} ledger rows."
-)
+unknown_action_rows = 0
+if "action_type" in raw.columns:
+    action_type_series = raw["action_type"].astype("string")
+    unknown_action_rows = int((action_type_series.isna() | action_type_series.str.strip().eq("")).sum())
+
+if unknown_action_rows > 0:
+    st.warning(
+        f"Loaded {len(uploaded_files):,} file(s): {len(raw):,} raw rows and normalized to {len(ledger):,} ledger rows. "
+        f"Detected {unknown_action_rows:,} row(s) with unrecognized action types."
+    )
+else:
+    st.success(
+        f"Loaded {len(uploaded_files):,} file(s): {len(raw):,} raw rows and normalized to {len(ledger):,} ledger rows."
+    )
 
 tab_ledger, tab_balance, tab_fees = st.tabs(["Ledger", "Balance", "Fees"])
 

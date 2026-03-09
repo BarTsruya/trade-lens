@@ -65,7 +65,7 @@ HEBREW_ACTION_TYPE_MAP = {
     "העברה מזומן בשח": RawActionType.TRANSFER_CASH_SHEKEL.value,
     "דמי טפול מזומן בשח": RawActionType.CASH_HANDLING_FEE_SHEKEL.value,
     "משיכה": RawActionType.WITHDRAWAL.value,
-    'משיכת ריבית מט"ח': RawActionType.WITHDRAWAL_INTEREST_FOREIGN.value,
+    "משיכת ריבית מטח": RawActionType.WITHDRAWAL_INTEREST_FOREIGN.value,
     "שונות מזומן בשח": RawActionType.OTHER_CASH_SHEKEL.value,
 }
 
