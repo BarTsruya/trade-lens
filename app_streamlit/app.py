@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import tempfile
 from typing import Optional, Tuple
 
@@ -142,16 +143,101 @@ tab_ledger, tab_balance, tab_fees = st.tabs(["Ledger", "Balance", "Fees"])
 with tab_ledger:
     st.subheader("Ledger Preview")
 
-    date_series = pd.to_datetime(ledger.get("date"), errors="coerce")
-    min_date = date_series.min()
-    max_date = date_series.max()
+    ledger_filter_df = ledger.copy()
+    ledger_filter_df["_date_filter"] = pd.to_datetime(ledger_filter_df.get("date"), errors="coerce")
+    ledger_filter_df = ledger_filter_df.loc[ledger_filter_df["_date_filter"].notna()].copy()
 
+    min_date = ledger_filter_df["_date_filter"].min()
+    max_date = ledger_filter_df["_date_filter"].max()
+    default_date_range = (
+        min_date.date() if pd.notna(min_date) else None,
+        max_date.date() if pd.notna(max_date) else None,
+    )
+
+    action_options = sorted(
+        v
+        for v in ledger_filter_df.get("action_type", pd.Series(dtype="string")).astype("string").dropna().unique().tolist()
+        if str(v).strip()
+    )
+    symbol_options = sorted(
+        v
+        for v in ledger_filter_df.get("symbol", pd.Series(dtype="string")).astype("string").dropna().unique().tolist()
+        if str(v).strip()
+    )
+
+    filter_col1, filter_col2, filter_col3 = st.columns(3)
+    with filter_col1:
+        full_range_clicked = st.button("Full range", key="ledger_filter_full_range")
+        if full_range_clicked and all(default_date_range):
+            st.session_state["ledger_filter_date_range"] = default_date_range
+            st.rerun()
+
+        st.markdown("Date range")
+        selected_date_range = st.date_input(
+            "Date range",
+            value=default_date_range if all(default_date_range) else (),
+            key="ledger_filter_date_range",
+            label_visibility="collapsed",
+        )
+    with filter_col2:
+        if st.button("All types", key="ledger_filter_all_types"):
+            for action_value in action_options:
+                action_key = re.sub(r"[^a-zA-Z0-9]+", "_", str(action_value)).strip("_").lower()
+                checkbox_key = f"ledger_filter_action_visible_{action_key}"
+                st.session_state[checkbox_key] = False
+            st.rerun()
+
+        st.markdown("Action type")
+        selected_action_types: list[str] = []
+        with st.expander("Select action types", expanded=False):
+            for action_value in action_options:
+                action_key = re.sub(r"[^a-zA-Z0-9]+", "_", str(action_value)).strip("_").lower()
+                checkbox_key = f"ledger_filter_action_visible_{action_key}"
+                is_visible = st.checkbox(str(action_value), value=False, key=checkbox_key)
+                if is_visible:
+                    selected_action_types.append(str(action_value))
+    with filter_col3:
+        if st.button("All symbols", key="ledger_filter_all_symbols"):
+            for symbol_value in symbol_options:
+                symbol_key = re.sub(r"[^a-zA-Z0-9]+", "_", str(symbol_value)).strip("_").lower()
+                checkbox_key = f"ledger_filter_symbol_visible_{symbol_key}"
+                st.session_state[checkbox_key] = False
+            st.rerun()
+
+        st.markdown("Symbol")
+        selected_symbols: list[str] = []
+        with st.expander("Select symbols", expanded=False):
+            for symbol_value in symbol_options:
+                symbol_key = re.sub(r"[^a-zA-Z0-9]+", "_", str(symbol_value)).strip("_").lower()
+                checkbox_key = f"ledger_filter_symbol_visible_{symbol_key}"
+                is_visible = st.checkbox(str(symbol_value), value=False, key=checkbox_key)
+                if is_visible:
+                    selected_symbols.append(str(symbol_value))
+
+    mask = pd.Series(True, index=ledger_filter_df.index)
+
+    if isinstance(selected_date_range, tuple) and len(selected_date_range) == 2:
+        start_date, end_date = selected_date_range
+        if start_date and end_date:
+            row_dates = ledger_filter_df["_date_filter"].dt.date
+            mask &= (row_dates >= start_date) & (row_dates <= end_date)
+
+    if selected_action_types:
+        mask &= ledger_filter_df["action_type"].astype("string").isin(selected_action_types)
+
+    if selected_symbols:
+        mask &= ledger_filter_df["symbol"].astype("string").isin(selected_symbols)
+
+    filtered_ledger = ledger_filter_df.loc[mask].copy()
+
+    filtered_min_date = filtered_ledger["_date_filter"].min() if not filtered_ledger.empty else pd.NaT
+    filtered_max_date = filtered_ledger["_date_filter"].max() if not filtered_ledger.empty else pd.NaT
     stat_col1, stat_col2, stat_col3 = st.columns(3)
-    stat_col1.metric("Rows", f"{len(ledger):,}")
-    stat_col2.metric("Date From", "N/A" if pd.isna(min_date) else str(min_date.date()))
-    stat_col3.metric("Date To", "N/A" if pd.isna(max_date) else str(max_date.date()))
+    stat_col1.metric("Rows (filtered)", f"{len(filtered_ledger):,}")
+    stat_col2.metric("Date From", "N/A" if pd.isna(filtered_min_date) else str(filtered_min_date.date()))
+    stat_col3.metric("Date To", "N/A" if pd.isna(filtered_max_date) else str(filtered_max_date.date()))
 
-    ledger_display_df = df_dates_to_date_only(ledger)
+    ledger_display_df = df_dates_to_date_only(filtered_ledger.drop(columns=["_date_filter"], errors="ignore"))
     if "execution_price" in ledger_display_df.columns:
         ledger_display_df = ledger_display_df.drop(columns=["execution_price"])
     if "ledger_row_id" in ledger_display_df.columns:
@@ -163,6 +249,14 @@ with tab_ledger:
         ledger_display_df["delta_ils"] = ledger_display_df["delta_ils"].map(
             lambda v: _format_signed_currency(v, "₪")
         )
+
+    filtered_csv = filtered_ledger.drop(columns=["_date_filter"], errors="ignore").to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "Download filtered ledger (CSV)",
+        data=filtered_csv,
+        file_name="ledger_filtered.csv",
+        mime="text/csv",
+    )
 
     st.dataframe(ledger_display_df, width="stretch", hide_index=False)
 
