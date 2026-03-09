@@ -1,5 +1,0 @@
-- [] add filtering feature in ledger tab
-    - by action types
-    - by dates
-- [] fees
-    - calculate conversion fee (expressed in conversion rate)
