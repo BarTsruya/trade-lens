@@ -16,6 +16,7 @@ EMPTY_COLUMNS = [
     "fees_usd",
     "usd_balance",
     "ils_balance",
+    "expected_ils_balance",
 ]
 
 
@@ -121,6 +122,10 @@ def balance_timeline_actions(ledger_df: pd.DataFrame) -> pd.DataFrame:
     out["ils_delta"] = out["delta_ils"]
     out["usd_balance"] = out["usd_delta"].cumsum()
     out["ils_balance"] = out["ils_delta"].cumsum()
+    if "expected_ils_balance" in out.columns:
+        out["expected_ils_balance"] = pd.to_numeric(out["expected_ils_balance"], errors="coerce")
+    else:
+        out["expected_ils_balance"] = pd.NA
     out["date"] = pd.to_datetime(out["date"], errors="coerce").dt.date
 
     return out[EMPTY_COLUMNS]

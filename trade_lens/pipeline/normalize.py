@@ -30,6 +30,7 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
     quantity_col = RawDataAttribute.QUANTITY.value
     execution_price_col = RawDataAttribute.EXECUTION_PRICE.value
     estimated_tax_col = RawDataAttribute.ESTIMATED_CAPITAL_GAINS_TAX.value
+    shekel_balance_col = RawDataAttribute.SHEKEL_BALANCE.value
 
     gross_usd_col = RawDataAttribute.TOTAL_VALUE_FOREIGN.value
     gross_ils_col = RawDataAttribute.TOTAL_VALUE_SHEKEL.value
@@ -95,6 +96,9 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
             "delta_ils": df["delta_ils"],
             "fees_usd": df["fees_usd"],
             "estimated_capital_gains_tax": df[estimated_tax_col].fillna(0.0) if estimated_tax_col in df.columns else 0.0,
+            "expected_ils_balance": (
+                df[shekel_balance_col] if shekel_balance_col in df.columns else pd.Series(pd.NA, index=df.index)
+            ),
         }
     )
 
@@ -113,6 +117,8 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
         "fees_usd",
     ):
         out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0.0)
+
+    out["expected_ils_balance"] = pd.to_numeric(out["expected_ils_balance"], errors="coerce")
 
     out.sort_values(by="date", inplace=True, kind="mergesort", na_position="last")
     out.reset_index(drop=True, inplace=True)

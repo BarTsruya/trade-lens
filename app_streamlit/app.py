@@ -303,6 +303,8 @@ with tab_ledger:
     for internal_col in ("_source_order", "_date_desc"):
         if internal_col in ledger_display_df.columns:
             ledger_display_df = ledger_display_df.drop(columns=[internal_col])
+    if "expected_ils_balance" in ledger_display_df.columns:
+        ledger_display_df = ledger_display_df.drop(columns=["expected_ils_balance"])
     for usd_col in ("execution_price", "delta_usd", "fees_usd", "estimated_capital_gains_tax"):
         if usd_col in ledger_display_df.columns:
             ledger_display_df[usd_col] = ledger_display_df[usd_col].map(lambda v: _format_signed_currency(v, "$"))
@@ -312,7 +314,10 @@ with tab_ledger:
         )
 
     filtered_csv = (
-        filtered_ledger.drop(columns=["_date_filter", "_source_order", "_date_desc", "_display_idx"], errors="ignore")
+        filtered_ledger.drop(
+            columns=["_date_filter", "_source_order", "_date_desc", "_display_idx", "expected_ils_balance"],
+            errors="ignore",
+        )
         .to_csv(index=False)
         .encode("utf-8")
     )
@@ -342,6 +347,9 @@ with tab_balance:
     else:
         balance_display_df = df_dates_to_date_only(balance_df)
         balance_table_df = balance_display_df.copy()
+        if "expected_ils_balance" in balance_table_df.columns:
+            balance_table_df = balance_table_df.drop(columns=["expected_ils_balance"])
+
         for usd_col in ("usd_delta", "fees_usd", "usd_balance"):
             if usd_col in balance_table_df.columns:
                 balance_table_df[usd_col] = balance_table_df[usd_col].map(lambda v: _format_signed_currency(v, "$"))
