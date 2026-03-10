@@ -98,6 +98,12 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
         }
     )
 
+    # Pass through optional source-order metadata used for stable same-day ordering.
+    if "_source_order" in df.columns:
+        out["_source_order"] = pd.to_numeric(df["_source_order"], errors="coerce").fillna(0.0)
+    if "_date_desc" in df.columns:
+        out["_date_desc"] = df["_date_desc"].fillna(False).astype(bool)
+
     for col in (
         "quantity",
         "execution_price",

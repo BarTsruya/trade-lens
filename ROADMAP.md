@@ -1,21 +1,5 @@
 # Trade Lens — TODO / Roadmap (Open Tasks Only)
 
-## 1) Ledger tab (audit / debugging)
-
-### 1.1 Filtering & exploration
-- [ ] Add filtering controls for the ledger table
-  - [ ] Filter by date range (from/to)
-  - [ ] Filter by action_type (multi-select)
-  - [ ] Filter by symbol (multi-select + free-text search)
-  - [ ] “Reset filters” button
-- [ ] Add a small summary section above the table (after filters)
-  - [ ] Rows count (after filtering)
-  - [ ] Date range (min/max) (after filtering)
-- [ ] Export
-  - [ ] Download filtered ledger as CSV
-
----
-
 ## 2) Balance tab (cash timeline)
 
 ### 2.1 Row model & ordering

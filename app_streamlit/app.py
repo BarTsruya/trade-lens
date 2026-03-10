@@ -11,7 +11,7 @@ import streamlit as st
 
 from trade_lens.analytics.balance import balance_timeline_actions
 from trade_lens.analytics.cashflow import monthly_fees_breakdown
-from trade_lens.brokers.ibi import IbiRawLoader
+from trade_lens.brokers.ibi import IbiRawLoader, RawDataAttribute
 from trade_lens.pipeline.normalize import to_ledger
 
 
@@ -35,6 +35,36 @@ def df_dates_to_date_only(df: pd.DataFrame) -> pd.DataFrame:
         except Exception:
             # Keep original column unchanged if conversion is not possible.
             continue
+    return out
+
+
+def order_table_newest_first_with_chrono_index(df: pd.DataFrame, date_col: str) -> pd.DataFrame:
+    """Display newest rows first, while index numbering starts at 1 for the oldest row."""
+    if date_col not in df.columns:
+        return df.copy()
+
+    out = df.copy()
+    out["_sort_date"] = pd.to_datetime(out[date_col], errors="coerce")
+    out = out.loc[out["_sort_date"].notna()].copy()
+    if out.empty:
+        return out.drop(columns=["_sort_date"], errors="ignore")
+
+    # First assign chronological index labels (oldest=1), then display newest first.
+    # If _display_idx exists (e.g. filtered ledger view), preserve those original labels.
+    if "_display_idx" in out.columns:
+        out["_chrono_index"] = pd.to_numeric(out["_display_idx"], errors="coerce")
+        if out["_chrono_index"].isna().any():
+            out.sort_values(by="_sort_date", ascending=True, kind="mergesort", inplace=True)
+            out["_chrono_index"] = range(1, len(out) + 1)
+    else:
+        out.sort_values(by="_sort_date", ascending=True, kind="mergesort", inplace=True)
+        out["_chrono_index"] = range(1, len(out) + 1)
+
+    out.sort_values(by=["_sort_date", "_chrono_index"], ascending=[False, False], kind="mergesort", inplace=True)
+    out.index = out["_chrono_index"].astype(int)
+    out.index.name = None
+    out.drop(columns=["_sort_date"], inplace=True)
+    out.drop(columns=["_chrono_index"], inplace=True)
     return out
 
 
@@ -62,9 +92,22 @@ def load_and_normalize_many(file_payloads: Tuple[Tuple[str, bytes], ...]) -> Tup
                 tmp.write(file_bytes)
                 temp_path = tmp.name
 
-            raw_df_i = IbiRawLoader(temp_path).load()
+            # Keep original row order from the uploaded Excel for same-day ordering logic.
+            loader = IbiRawLoader(temp_path)
+            raw_df_i = loader._load_single(temp_path)
             raw_df_i = raw_df_i.copy()
             raw_df_i["source_file"] = file_name
+            raw_df_i["_source_order"] = range(len(raw_df_i))
+
+            date_col = RawDataAttribute.ACTION_DATE.value
+            if date_col in raw_df_i.columns:
+                raw_dates = pd.to_datetime(raw_df_i[date_col], dayfirst=True, errors="coerce")
+                valid_dates = raw_dates.dropna()
+                is_desc = bool(len(valid_dates) >= 2 and valid_dates.iloc[0] > valid_dates.iloc[-1])
+                raw_df_i[date_col] = raw_dates
+            else:
+                is_desc = False
+            raw_df_i["_date_desc"] = is_desc
 
             ledger_df_i = to_ledger(raw_df_i)
             ledger_df_i = ledger_df_i.copy()
@@ -91,7 +134,14 @@ def load_and_normalize_many(file_payloads: Tuple[Tuple[str, bytes], ...]) -> Tup
     ledger_dt = pd.to_datetime(ledger_all.get("date"), errors="coerce")
     ledger_all = ledger_all.loc[ledger_dt.notna()].copy()
     ledger_all["_date_sort"] = pd.to_datetime(ledger_all["date"], errors="coerce")
-    ledger_all.sort_values(by=["_date_sort", "ledger_row_id"], inplace=True, kind="mergesort")
+    if "_source_order" in ledger_all.columns and "_date_desc" in ledger_all.columns:
+        source_order = pd.to_numeric(ledger_all["_source_order"], errors="coerce").fillna(0.0)
+        date_desc = ledger_all["_date_desc"].fillna(False).astype(bool)
+        ledger_all["_within_day_sort"] = source_order.where(~date_desc, -source_order)
+        ledger_all.sort_values(by=["_date_sort", "_within_day_sort", "ledger_row_id"], inplace=True, kind="mergesort")
+        ledger_all.drop(columns=["_within_day_sort"], inplace=True)
+    else:
+        ledger_all.sort_values(by=["_date_sort", "ledger_row_id"], inplace=True, kind="mergesort")
     ledger_all.drop(columns=["_date_sort"], inplace=True)
     ledger_all.reset_index(drop=True, inplace=True)
 
@@ -117,11 +167,19 @@ if "date" in ledger.columns:
     ledger_date_sort = pd.to_datetime(ledger["date"], errors="coerce")
     ledger = ledger.loc[ledger_date_sort.notna()].copy()
     ledger["_date_sort"] = pd.to_datetime(ledger["date"], errors="coerce")
-    secondary_sort_col = "source_file" if "source_file" in ledger.columns else None
-    sort_cols = ["_date_sort"] + ([secondary_sort_col] if secondary_sort_col else [])
-    ledger.sort_values(by=sort_cols, inplace=True, kind="mergesort")
+    if "_source_order" in ledger.columns and "_date_desc" in ledger.columns:
+        source_order = pd.to_numeric(ledger["_source_order"], errors="coerce").fillna(0.0)
+        date_desc = ledger["_date_desc"].fillna(False).astype(bool)
+        ledger["_within_day_sort"] = source_order.where(~date_desc, -source_order)
+        ledger.sort_values(by=["_date_sort", "_within_day_sort"], inplace=True, kind="mergesort")
+        ledger.drop(columns=["_within_day_sort"], inplace=True)
+    else:
+        secondary_sort_col = "source_file" if "source_file" in ledger.columns else None
+        sort_cols = ["_date_sort"] + ([secondary_sort_col] if secondary_sort_col else [])
+        ledger.sort_values(by=sort_cols, inplace=True, kind="mergesort")
     ledger.drop(columns=["_date_sort"], inplace=True)
     ledger.reset_index(drop=True, inplace=True)
+    ledger["_display_idx"] = range(1, len(ledger) + 1)
 
 unknown_action_rows = 0
 if "action_type" in raw.columns:
@@ -242,6 +300,9 @@ with tab_ledger:
         ledger_display_df = ledger_display_df.drop(columns=["execution_price"])
     if "ledger_row_id" in ledger_display_df.columns:
         ledger_display_df = ledger_display_df.drop(columns=["ledger_row_id"])
+    for internal_col in ("_source_order", "_date_desc"):
+        if internal_col in ledger_display_df.columns:
+            ledger_display_df = ledger_display_df.drop(columns=[internal_col])
     for usd_col in ("execution_price", "delta_usd", "fees_usd", "estimated_capital_gains_tax"):
         if usd_col in ledger_display_df.columns:
             ledger_display_df[usd_col] = ledger_display_df[usd_col].map(lambda v: _format_signed_currency(v, "$"))
@@ -250,7 +311,11 @@ with tab_ledger:
             lambda v: _format_signed_currency(v, "₪")
         )
 
-    filtered_csv = filtered_ledger.drop(columns=["_date_filter"], errors="ignore").to_csv(index=False).encode("utf-8")
+    filtered_csv = (
+        filtered_ledger.drop(columns=["_date_filter", "_source_order", "_date_desc", "_display_idx"], errors="ignore")
+        .to_csv(index=False)
+        .encode("utf-8")
+    )
     st.download_button(
         "Download filtered ledger (CSV)",
         data=filtered_csv,
@@ -258,6 +323,9 @@ with tab_ledger:
         mime="text/csv",
     )
 
+    ledger_display_df = order_table_newest_first_with_chrono_index(ledger_display_df, "date")
+    if "_display_idx" in ledger_display_df.columns:
+        ledger_display_df = ledger_display_df.drop(columns=["_display_idx"])
     st.dataframe(ledger_display_df, width="stretch", hide_index=False)
 
 with tab_balance:
@@ -265,7 +333,7 @@ with tab_balance:
     st.caption(
         "Action-level cash timeline with running balances based on cash-affecting rows."
     )
-    st.caption("Index matches the Ledger table index for traceability.")
+    st.caption("Rows are displayed newest first. Index labels are chronological (1 = oldest).")
 
     balance_df = balance_timeline_actions(ledger)
 
@@ -281,6 +349,7 @@ with tab_balance:
             if ils_col in balance_table_df.columns:
                 balance_table_df[ils_col] = balance_table_df[ils_col].map(lambda v: _format_signed_currency(v, "₪"))
 
+        balance_table_df = order_table_newest_first_with_chrono_index(balance_table_df, "date")
         st.dataframe(balance_table_df, width="stretch", hide_index=False)
         balance_long = balance_display_df.melt(
             id_vars=["date"],
@@ -323,4 +392,5 @@ with tab_fees:
             labels={"month": "Month", "amount": "Amount", "fee_type": "Fee Type"},
         )
         st.plotly_chart(fig_fees, width="stretch")
-        st.dataframe(fees_display_df, width="stretch", hide_index=True)
+        fees_display_df = order_table_newest_first_with_chrono_index(fees_display_df, "month")
+        st.dataframe(fees_display_df, width="stretch", hide_index=False)
