@@ -342,6 +342,12 @@ with tab_balance:
 
     balance_df = balance_timeline_actions(ledger)
 
+    # Keep balance row labels aligned with the ledger table index labels.
+    ledger_display_idx = pd.to_numeric(ledger.get("_display_idx"), errors="coerce")
+    if not balance_df.empty and ledger_display_idx is not None:
+        mapped_idx = ledger_display_idx.reindex(balance_df.index)
+        balance_df["_display_idx"] = mapped_idx
+
     if balance_df.empty:
         st.warning("No balance actions found for these action types.")
     else:
@@ -358,6 +364,8 @@ with tab_balance:
                 balance_table_df[ils_col] = balance_table_df[ils_col].map(lambda v: _format_signed_currency(v, "₪"))
 
         balance_table_df = order_table_newest_first_with_chrono_index(balance_table_df, "date")
+        if "_display_idx" in balance_table_df.columns:
+            balance_table_df = balance_table_df.drop(columns=["_display_idx"])
         st.dataframe(balance_table_df, width="stretch", hide_index=False)
         balance_long = balance_display_df.melt(
             id_vars=["date"],

@@ -1,5 +1,17 @@
 # Trade Lens — TODO / Roadmap (Open Tasks Only)
 
+## my todo list:
+- [ ] use currency column to write the correct price
+- [ ] compare nominal gain and real gain
+- [ ] my understanding about taxes:
+      - tax shild accumulates
+      - when a month which some profit was made in reaches to an end:
+      - if tax_to_pay > tax_shield:
+        then i will pay tax_to_pay - tax_shield
+      - tax get paid OR tax credit received (if tax shield was bigger enough)
+- [ ] calculate the average conversion rate (im crurious)
+- [ ] fix full_range button warning
+
 ## 2) Balance tab (cash timeline)
 
 ### 2.1 Row model & ordering
