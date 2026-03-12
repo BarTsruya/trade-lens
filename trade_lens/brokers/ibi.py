@@ -43,6 +43,12 @@ class RawActionType(Enum):
     SALE_SHEKEL = "sale_shekel"
     WITHDRAWAL_TAX_FOREIGN = "withdrawal_tax_foreign"
     DEPOSIT_DIVIDEND_FOREIGN = "deposit_dividend_foreign"
+    FUTURES_TAX = "futures_tax"
+    TAX_SHIELD_ACCRUAL = "tax_shield_accrual"
+    TAX_SHIELD_RESET = "tax_shield_reset"
+    TAX_PAYABLE = "tax_payable"
+    TAX_PAYMENT = "tax_payment"
+    TAX_CREDIT = "tax_credit"
     BUY = "buy"
     DEPOSIT = "deposit"
     SELL = "sell"
@@ -58,6 +64,12 @@ HEBREW_ACTION_TYPE_MAP = {
     "מכירה שח": RawActionType.SALE_SHEKEL.value,
     "משיכת מס חול מטח": RawActionType.WITHDRAWAL_TAX_FOREIGN.value,
     "הפקדה דיבידנד מטח": RawActionType.DEPOSIT_DIVIDEND_FOREIGN.value,
+    "מס עתידי": RawActionType.FUTURES_TAX.value,
+    "איפוס מגן מס": RawActionType.TAX_SHIELD_RESET.value,
+    "מגן מס": RawActionType.TAX_SHIELD_ACCRUAL.value,
+    "מס לשלם": RawActionType.TAX_PAYABLE.value,
+    "מס ששולם": RawActionType.TAX_PAYMENT.value,
+    "זיכוי מס": RawActionType.TAX_CREDIT.value,
     "קניה חול מטח": RawActionType.BUY.value,
     "הפקדה": RawActionType.DEPOSIT.value,
     "מכירה חול מטח": RawActionType.SELL.value,

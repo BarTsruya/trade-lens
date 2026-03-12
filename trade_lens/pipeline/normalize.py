@@ -67,6 +67,36 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
     df["fees_usd"] = df["fees_usd"].abs()
 
     df[action_col] = df[action_col].astype("string")
+
+    symbol_series = (
+        df[symbol_col].astype("string").fillna("").str.strip()
+        if symbol_col in df.columns
+        else pd.Series("", index=df.index, dtype="string")
+    )
+    paper_name_series = (
+        df[paper_name_col].astype("string").fillna("")
+        if paper_name_col in df.columns
+        else pd.Series("", index=df.index, dtype="string")
+    )
+
+    # Tax action overrides for ambiguous symbols.
+    futures_tax_mask = symbol_series == "9992985"
+    tax_symbol_mask = symbol_series.isin(["9992983", "9993983"])
+    tax_shield_reset_mask = tax_symbol_mask & paper_name_series.str.contains("איפוס מגן מס", na=False)
+    tax_shield_mask = (
+        tax_symbol_mask & paper_name_series.str.contains("מגן מס", na=False) & ~tax_shield_reset_mask
+    )
+    tax_payable_mask = tax_symbol_mask & paper_name_series.str.contains("מס לשלם", na=False)
+    tax_payment_mask = tax_symbol_mask & paper_name_series.str.contains("מס ששולם", na=False)
+    tax_credit_mask = tax_symbol_mask & paper_name_series.str.contains("זיכוי מס", na=False)
+
+    df.loc[futures_tax_mask, action_col] = RawActionType.FUTURES_TAX.value
+    df.loc[tax_shield_reset_mask, action_col] = RawActionType.TAX_SHIELD_RESET.value
+    df.loc[tax_shield_mask, action_col] = RawActionType.TAX_SHIELD_ACCRUAL.value
+    df.loc[tax_payable_mask, action_col] = RawActionType.TAX_PAYABLE.value
+    df.loc[tax_payment_mask, action_col] = RawActionType.TAX_PAYMENT.value
+    df.loc[tax_credit_mask, action_col] = RawActionType.TAX_CREDIT.value
+
     is_trade = df[action_col].isin(BUY_SELL_ACTIONS)
 
     df["delta_usd"] = df["raw_usd"]
@@ -77,9 +107,6 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
     # Keep ILS cash movement as the raw shekel effect per row.
     df["delta_ils"] = df["raw_ils"]
 
-    symbol_series = (
-        df[symbol_col].astype("string") if symbol_col in df.columns else pd.Series("", index=df.index, dtype="string")
-    )
     conversion_mask = (df[action_col] == RawActionType.PURCHASE_SHEKEL.value) & (symbol_series == "99028")
     if quantity_col in df.columns:
         df.loc[conversion_mask, "delta_usd"] = df.loc[conversion_mask, quantity_col].fillna(0.0)
