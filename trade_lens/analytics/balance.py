@@ -59,7 +59,7 @@ def balance_timeline_actions(ledger_df: pd.DataFrame) -> pd.DataFrame:
         return _empty_result()
 
     transfer_action = RawActionType.CASH_DEPOSIT.value
-    conversion_action = RawActionType.PURCHASE_SHEKEL.value
+    conversion_action = RawActionType.FX_CONVERSION.value
     other_cash_actions = {RawActionType.OTHER_CASH.value}
     buy_action = RawActionType.BUY.value
     sell_action = RawActionType.SELL.value

@@ -139,7 +139,7 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
     df.loc[routed_usd_mask, "delta_usd"] = df.loc[routed_usd_mask, "raw_usd"]
     df.loc[routed_usd_mask, "delta_ils"] = 0.0
 
-    conversion_mask = (df[action_col] == RawActionType.PURCHASE_SHEKEL.value) & (symbol_series == "99028")
+    conversion_mask = (df[action_col] == RawActionType.FX_CONVERSION.value) & (symbol_series == "99028")
     if quantity_col in df.columns:
         df.loc[conversion_mask, "delta_usd"] = df.loc[conversion_mask, quantity_col].fillna(0.0)
 
