@@ -58,9 +58,9 @@ def balance_timeline_actions(ledger_df: pd.DataFrame) -> pd.DataFrame:
     if out.empty:
         return _empty_result()
 
-    transfer_action = RawActionType.TRANSFER_CASH_SHEKEL.value
+    transfer_action = RawActionType.CASH_DEPOSIT.value
     conversion_action = RawActionType.PURCHASE_SHEKEL.value
-    other_cash_action = RawActionType.OTHER_CASH_SHEKEL.value
+    other_cash_actions = {RawActionType.OTHER_CASH.value}
     buy_action = RawActionType.BUY.value
     sell_action = RawActionType.SELL.value
 
@@ -83,7 +83,7 @@ def balance_timeline_actions(ledger_df: pd.DataFrame) -> pd.DataFrame:
                 conversion_text = f"{conversion_text} (rate: {paper_name})"
             return conversion_text
 
-        if action_type == other_cash_action:
+        if action_type in other_cash_actions:
             return paper_name or action_type
 
         if action_type in (buy_action, sell_action):

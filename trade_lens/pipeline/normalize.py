@@ -31,6 +31,7 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
     execution_price_col = RawDataAttribute.EXECUTION_PRICE.value
     estimated_tax_col = RawDataAttribute.ESTIMATED_CAPITAL_GAINS_TAX.value
     shekel_balance_col = RawDataAttribute.SHEKEL_BALANCE.value
+    currency_col = RawDataAttribute.CURRENCY.value
 
     gross_usd_col = RawDataAttribute.TOTAL_VALUE_FOREIGN.value
     gross_ils_col = RawDataAttribute.TOTAL_VALUE_SHEKEL.value
@@ -106,6 +107,37 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
 
     # Keep ILS cash movement as the raw shekel effect per row.
     df["delta_ils"] = df["raw_ils"]
+
+    # For account cash actions, route the movement to the currency-specific delta field.
+    currency_series = (
+        df[currency_col].astype("string").fillna("")
+        if currency_col in df.columns
+        else pd.Series("", index=df.index, dtype="string")
+    )
+    currency_clean = (
+        currency_series.str.strip()
+        .str.replace(r"\s+", "", regex=True)
+        .str.replace('"', "", regex=False)
+        .str.replace("׳", "", regex=False)
+        .str.replace("״", "", regex=False)
+        .str.lower()
+    )
+    is_ils_currency = currency_clean.str.contains(r"ils|nis|שח|שקל", na=False)
+    is_usd_currency = currency_clean.str.contains(r"usd|\$|דולר", na=False)
+
+    currency_routed_cash_actions = {
+        RawActionType.CASH_DEPOSIT.value,
+        RawActionType.ACCOUNT_MAINTENANCE_FEE.value,
+        RawActionType.OTHER_CASH.value,
+    }
+    routed_cash_mask = df[action_col].isin(currency_routed_cash_actions)
+    routed_ils_mask = routed_cash_mask & is_ils_currency
+    routed_usd_mask = routed_cash_mask & is_usd_currency
+
+    df.loc[routed_ils_mask, "delta_ils"] = df.loc[routed_ils_mask, "raw_ils"]
+    df.loc[routed_ils_mask, "delta_usd"] = 0.0
+    df.loc[routed_usd_mask, "delta_usd"] = df.loc[routed_usd_mask, "raw_usd"]
+    df.loc[routed_usd_mask, "delta_ils"] = 0.0
 
     conversion_mask = (df[action_col] == RawActionType.PURCHASE_SHEKEL.value) & (symbol_series == "99028")
     if quantity_col in df.columns:

@@ -51,13 +51,13 @@ class RawActionType(Enum):
     TAX_CREDIT = "tax_credit"
     BUY = "buy"
     DEPOSIT = "deposit"
+    CASH_DEPOSIT = "cash_deposit"
     SELL = "sell"
+    ACCOUNT_MAINTENANCE_FEE = "account_maintenance_fee"
     PURCHASE_SHEKEL = "purchase_shekel"
-    TRANSFER_CASH_SHEKEL = "transfer_cash_shekel"
-    CASH_HANDLING_FEE_SHEKEL = "cash_handling_fee_shekel"
     WITHDRAWAL = "withdrawal"
     WITHDRAWAL_INTEREST_FOREIGN = "withdrawal_interest_foreign"
-    OTHER_CASH_SHEKEL = "other_cash_shekel"
+    OTHER_CASH = "other_cash"
 
 
 HEBREW_ACTION_TYPE_MAP = {
@@ -74,11 +74,11 @@ HEBREW_ACTION_TYPE_MAP = {
     "הפקדה": RawActionType.DEPOSIT.value,
     "מכירה חול מטח": RawActionType.SELL.value,
     "קניה שח": RawActionType.PURCHASE_SHEKEL.value,
-    "העברה מזומן בשח": RawActionType.TRANSFER_CASH_SHEKEL.value,
-    "דמי טפול מזומן בשח": RawActionType.CASH_HANDLING_FEE_SHEKEL.value,
+    "העברה מזומן בשח": RawActionType.CASH_DEPOSIT.value,
+    "דמי טפול מזומן בשח": RawActionType.ACCOUNT_MAINTENANCE_FEE.value,
     "משיכה": RawActionType.WITHDRAWAL.value,
     "משיכת ריבית מטח": RawActionType.WITHDRAWAL_INTEREST_FOREIGN.value,
-    "שונות מזומן בשח": RawActionType.OTHER_CASH_SHEKEL.value,
+    "שונות מזומן בשח": RawActionType.OTHER_CASH.value,
 }
 
 
@@ -95,7 +95,8 @@ class IbiRawLoader:
         df = pd.read_excel(path)
         df.rename(columns=HEBREW_COLUMNS_MAP, inplace=True)
         if RawDataAttribute.ACTION_TYPE.value in df.columns:
-            df[RawDataAttribute.ACTION_TYPE.value] = df[RawDataAttribute.ACTION_TYPE.value].map(HEBREW_ACTION_TYPE_MAP)
+            action_col = RawDataAttribute.ACTION_TYPE.value
+            df[action_col] = df[action_col].astype("string").str.strip().map(HEBREW_ACTION_TYPE_MAP)
         return df
 
     def load(self) -> pd.DataFrame:
