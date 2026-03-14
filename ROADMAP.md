@@ -11,6 +11,8 @@
       - tax get paid OR tax credit received (if tax shield was bigger enough)
 - [ ] calculate the average conversion rate (im crurious)
 - [ ] fix full_range button warning
+- [ ] suggest copilot seprate app
+      - different modules for different tabs for example
 
 ## 2) Balance tab (cash timeline)
 
