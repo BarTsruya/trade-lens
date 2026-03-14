@@ -40,8 +40,8 @@ HEBREW_COLUMNS_MAP = {
 
 
 class RawActionType(Enum):
-    WITHDRAWAL_TAX_FOREIGN = "withdrawal_tax_foreign"
-    DEPOSIT_DIVIDEND_FOREIGN = "deposit_dividend_foreign"
+    DIVIDEND_TAX = "dividend_tax"
+    DIVIDEND_DEPOSIT = "dividend_deposit"
     FUTURES_TAX = "futures_tax"
     TAX_SHIELD_ACCRUAL = "tax_shield_accrual"
     TAX_SHIELD_RESET = "tax_shield_reset"
@@ -53,13 +53,13 @@ class RawActionType(Enum):
     SELL = "sell"
     ACCOUNT_MAINTENANCE_FEE = "account_maintenance_fee"
     FX_CONVERSION = "fx_conversion"
-    WITHDRAWAL_INTEREST_FOREIGN = "withdrawal_interest_foreign"
+    DEBIT_INTEREST = "debit_interest"
     OTHER_CASH = "other_cash"
 
 
 HEBREW_ACTION_TYPE_MAP = {
-    "משיכת מס חול מטח": RawActionType.WITHDRAWAL_TAX_FOREIGN.value,
-    "הפקדה דיבידנד מטח": RawActionType.DEPOSIT_DIVIDEND_FOREIGN.value,
+    "משיכת מס חול מטח": RawActionType.DIVIDEND_TAX.value,
+    "הפקדה דיבידנד מטח": RawActionType.DIVIDEND_DEPOSIT.value,
     "מס עתידי": RawActionType.FUTURES_TAX.value,
     "איפוס מגן מס": RawActionType.TAX_SHIELD_RESET.value,
     "מגן מס": RawActionType.TAX_SHIELD_ACCRUAL.value,
@@ -71,7 +71,7 @@ HEBREW_ACTION_TYPE_MAP = {
     "קניה שח": RawActionType.FX_CONVERSION.value,
     "העברה מזומן בשח": RawActionType.CASH_DEPOSIT.value,
     "דמי טפול מזומן בשח": RawActionType.ACCOUNT_MAINTENANCE_FEE.value,
-    "משיכת ריבית מטח": RawActionType.WITHDRAWAL_INTEREST_FOREIGN.value,
+    "משיכת ריבית מטח": RawActionType.DEBIT_INTEREST.value,
     "שונות מזומן בשח": RawActionType.OTHER_CASH.value,
 }
 
