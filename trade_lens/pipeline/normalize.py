@@ -30,11 +30,11 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
     quantity_col = RawDataAttribute.QUANTITY.value
     execution_price_col = RawDataAttribute.EXECUTION_PRICE.value
     estimated_tax_col = RawDataAttribute.ESTIMATED_CAPITAL_GAINS_TAX.value
-    shekel_balance_col = RawDataAttribute.ILS_BALANCE.value
+    ils_balance_col = RawDataAttribute.ILS_BALANCE.value
     currency_col = RawDataAttribute.CURRENCY.value
 
-    gross_usd_col = RawDataAttribute.RAW_USD_AMOUNT.value
-    gross_ils_col = RawDataAttribute.RAW_ILS_AMOUNT.value
+    raw_usd_amount_col = RawDataAttribute.RAW_USD_AMOUNT.value
+    raw_ils_amount_col = RawDataAttribute.RAW_ILS_AMOUNT.value
 
     commission_col = RawDataAttribute.COMMISSION_FEE.value
     add_fees_col = RawDataAttribute.ADDITIONAL_FEES.value
@@ -45,8 +45,8 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
 
     # numeric coercion
     for col in (
-        gross_usd_col,
-        gross_ils_col,
+        raw_usd_amount_col,
+        raw_ils_amount_col,
         commission_col,
         add_fees_col,
         quantity_col,
@@ -56,8 +56,8 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    df["raw_usd"] = df[gross_usd_col].fillna(0.0) if gross_usd_col in df.columns else 0.0
-    df["raw_ils"] = df[gross_ils_col].fillna(0.0) if gross_ils_col in df.columns else 0.0
+    df["raw_usd"] = df[raw_usd_amount_col].fillna(0.0) if raw_usd_amount_col in df.columns else 0.0
+    df["raw_ils"] = df[raw_ils_amount_col].fillna(0.0) if raw_ils_amount_col in df.columns else 0.0
 
     # Fees are ALWAYS in USD in your IBI export
     df["fees_usd"] = 0.0
@@ -156,7 +156,7 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
             "fees_usd": df["fees_usd"],
             "estimated_capital_gains_tax": df[estimated_tax_col].fillna(0.0) if estimated_tax_col in df.columns else 0.0,
             "expected_ils_balance": (
-                df[shekel_balance_col] if shekel_balance_col in df.columns else pd.Series(pd.NA, index=df.index)
+                df[ils_balance_col] if ils_balance_col in df.columns else pd.Series(pd.NA, index=df.index)
             ),
         }
     )
