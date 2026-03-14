@@ -122,8 +122,8 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
         .str.replace("״", "", regex=False)
         .str.lower()
     )
-    is_ils_currency = currency_clean.str.contains(r"ils|nis|שח|שקל", na=False)
-    is_usd_currency = currency_clean.str.contains(r"usd|\$|דולר", na=False)
+    is_ils_currency = currency_clean.str.contains("₪", na=False, regex=False)
+    is_usd_currency = currency_clean.str.contains("$", na=False, regex=False)
 
     currency_routed_cash_actions = {
         RawActionType.CASH_DEPOSIT.value,
