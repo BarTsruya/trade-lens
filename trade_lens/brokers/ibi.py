@@ -16,9 +16,9 @@ class RawDataAttribute(Enum):
     CURRENCY = "currency"
     COMMISSION_FEE = "commission_fee"
     ADDITIONAL_FEES = "additional_fees"
-    TOTAL_VALUE_FOREIGN = "total_value_foreign"  # USD in your v1 assumption
-    TOTAL_VALUE_SHEKEL = "total_value_shekel"
-    SHEKEL_BALANCE = "shekel_balance"
+    RAW_USD_AMOUNT = "raw_usd_amount"
+    RAW_ILS_AMOUNT = "raw_ils_amount"
+    ILS_BALANCE = "ils_balance"
     ESTIMATED_CAPITAL_GAINS_TAX = "estimated_capital_gains_tax"
 
 
@@ -32,9 +32,9 @@ HEBREW_COLUMNS_MAP = {
     "מטבע": RawDataAttribute.CURRENCY.value,
     "עמלת פעולה": RawDataAttribute.COMMISSION_FEE.value,
     "עמלות נלוות": RawDataAttribute.ADDITIONAL_FEES.value,
-    'תמורה במט"ח': RawDataAttribute.TOTAL_VALUE_FOREIGN.value,
-    "תמורה בשקלים": RawDataAttribute.TOTAL_VALUE_SHEKEL.value,
-    "יתרה שקלית": RawDataAttribute.SHEKEL_BALANCE.value,
+    'תמורה במט"ח': RawDataAttribute.RAW_USD_AMOUNT.value,
+    "תמורה בשקלים": RawDataAttribute.RAW_ILS_AMOUNT.value,
+    "יתרה שקלית": RawDataAttribute.ILS_BALANCE.value,
     "אומדן מס רווחי הון": RawDataAttribute.ESTIMATED_CAPITAL_GAINS_TAX.value,
 }
 
@@ -88,6 +88,7 @@ class IbiRawLoader:
     def _load_single(self, path: str) -> pd.DataFrame:
         df = pd.read_excel(path)
         df.rename(columns=HEBREW_COLUMNS_MAP, inplace=True)
+
         if RawDataAttribute.ACTION_TYPE.value in df.columns:
             action_col = RawDataAttribute.ACTION_TYPE.value
             df[action_col] = df[action_col].astype("string").str.strip().map(HEBREW_ACTION_TYPE_MAP)

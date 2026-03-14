@@ -30,11 +30,11 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
     quantity_col = RawDataAttribute.QUANTITY.value
     execution_price_col = RawDataAttribute.EXECUTION_PRICE.value
     estimated_tax_col = RawDataAttribute.ESTIMATED_CAPITAL_GAINS_TAX.value
-    shekel_balance_col = RawDataAttribute.SHEKEL_BALANCE.value
+    shekel_balance_col = RawDataAttribute.ILS_BALANCE.value
     currency_col = RawDataAttribute.CURRENCY.value
 
-    gross_usd_col = RawDataAttribute.TOTAL_VALUE_FOREIGN.value
-    gross_ils_col = RawDataAttribute.TOTAL_VALUE_SHEKEL.value
+    gross_usd_col = RawDataAttribute.RAW_USD_AMOUNT.value
+    gross_ils_col = RawDataAttribute.RAW_ILS_AMOUNT.value
 
     commission_col = RawDataAttribute.COMMISSION_FEE.value
     add_fees_col = RawDataAttribute.ADDITIONAL_FEES.value
@@ -101,7 +101,7 @@ def to_ledger(raw_df: pd.DataFrame) -> pd.DataFrame:
     is_trade = df[action_col].isin(BUY_SELL_ACTIONS)
 
     df["delta_usd"] = df["raw_usd"]
-    # IBI total_value_foreign is net cash effect including fees.
+    # IBI raw_usd_amount is net cash effect including fees.
     # Add fees back for buy/sell so delta_usd represents gross transaction value excluding fees.
     df.loc[is_trade, "delta_usd"] = df.loc[is_trade, "raw_usd"] + df.loc[is_trade, "fees_usd"]
 
