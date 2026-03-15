@@ -243,7 +243,7 @@ with tab_taxes:
         if taxes_table_df.empty:
             st.info("No tax-related actions found.")
         else:
-            for col in ("tax_shield_state", "tax_paymant_state", "total_annual_tax"):
+            for col in ("tax_shield_state", "tax_payable_state", "total_annual_tax"):
                 taxes_table_df[col] = taxes_table_df[col].map(lambda v: format_signed_currency(v, "₪"))
 
             taxes_table_df = order_table_newest_first_with_chrono_index(taxes_table_df, "date")

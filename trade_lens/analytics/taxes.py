@@ -19,7 +19,7 @@ def build_tax_ledger(ledger_df: pd.DataFrame) -> pd.DataFrame:
 
     Returns a DataFrame with columns:
       date, action_type, paper_name, amount (formatted str),
-      tax_shield_state (float), tax_paymant_state (float),
+      tax_shield_state (float), tax_payable_state (float),
       total_annual_tax (float), _annual_year_end (bool),
       _display_idx (passed through if present in input).
 
@@ -69,12 +69,15 @@ def build_tax_ledger(ledger_df: pd.DataFrame) -> pd.DataFrame:
         taxes_df.loc[empty_amount_mask, "amount"] = "0.00"
 
     # --- State machine (chronological order) ---
+    # tax_shield_state: accumulates TAX_SHIELD_ACCRUAL; zeroed by TAX_PAYMENT;
+    #                   reduced by tax_payable_state value on TAX_CREDIT.
+    # tax_payable_state: accumulates TAX_PAYABLE; zeroed by TAX_PAYMENT or TAX_CREDIT.
     shield_state = 0.0
-    paymant_state = 0.0
+    payable_state = 0.0
     annual_tax_total = 0.0
     current_year: int | None = None
     shield_state_values: list[float] = []
-    paymant_state_values: list[float] = []
+    payable_state_values: list[float] = []
     annual_tax_values: list[float] = []
 
     for idx, action_type in action_series.items():
@@ -84,32 +87,27 @@ def build_tax_ledger(ledger_df: pd.DataFrame) -> pd.DataFrame:
             annual_tax_total = 0.0
             current_year = row_year
 
-        if action_type == RawActionType.TAX_PAYMENT.value:
-            shield_state = 0.0
-            paymant_state = max(0.0, paymant_state - amount)
-            annual_tax_total += amount
-        elif action_type == RawActionType.TAX_SHIELD_ACCRUAL.value:
-            offset_amount = min(paymant_state, amount)
-            paymant_state -= offset_amount
-            shield_state += amount - offset_amount
+        if action_type == RawActionType.TAX_SHIELD_ACCRUAL.value:
+            shield_state += amount
         elif action_type == RawActionType.TAX_SHIELD_RESET.value:
             shield_state = 0.0
-        elif action_type == RawActionType.TAX_CREDIT.value:
-            shield_state = max(0.0, shield_state - amount)
-            annual_tax_total = max(0.0, annual_tax_total - amount)
         elif action_type == RawActionType.TAX_PAYABLE.value:
-            if shield_state >= amount:
-                shield_state -= amount
-            else:
-                paymant_state += amount - shield_state
-                shield_state = 0.0
+            payable_state += amount
+        elif action_type == RawActionType.TAX_PAYMENT.value:
+            shield_state = 0.0
+            payable_state = 0.0
+            annual_tax_total += amount
+        elif action_type == RawActionType.TAX_CREDIT.value:
+            shield_state = max(0.0, shield_state - payable_state - amount)
+            payable_state = 0.0
+            annual_tax_total = max(0.0, annual_tax_total - amount)
 
         shield_state_values.append(shield_state)
-        paymant_state_values.append(paymant_state)
+        payable_state_values.append(payable_state)
         annual_tax_values.append(annual_tax_total)
 
     taxes_df["tax_shield_state"] = pd.Series(shield_state_values, index=taxes_df.index)
-    taxes_df["tax_paymant_state"] = pd.Series(paymant_state_values, index=taxes_df.index)
+    taxes_df["tax_payable_state"] = pd.Series(payable_state_values, index=taxes_df.index)
     taxes_df["total_annual_tax"] = pd.Series(annual_tax_values, index=taxes_df.index)
 
     year_series = taxes_df["date"].dt.year
@@ -121,7 +119,7 @@ def build_tax_ledger(ledger_df: pd.DataFrame) -> pd.DataFrame:
         "paper_name",
         "amount",
         "tax_shield_state",
-        "tax_paymant_state",
+        "tax_payable_state",
         "total_annual_tax",
         "_annual_year_end",
     ]
