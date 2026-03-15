@@ -12,7 +12,7 @@ import streamlit as st
 from trade_lens.analytics.balance import balance_timeline_actions
 from trade_lens.analytics.cashflow import monthly_fees_breakdown
 from trade_lens.analytics.taxes import build_tax_ledger
-from trade_lens.brokers.ibi import IbiRawLoader, RawActionType, RawDataAttribute
+from trade_lens.brokers.ibi import load_single, RawActionType, RawDataAttribute
 from trade_lens.pipeline.normalize import to_ledger
 
 
@@ -95,9 +95,7 @@ def load_and_normalize_many(file_payloads: Tuple[Tuple[str, bytes], ...]) -> Tup
                 temp_path = tmp.name
 
             # Keep original row order from the uploaded Excel for same-day ordering logic.
-            loader = IbiRawLoader(temp_path)
-            raw_df_i = loader._load_single(temp_path)
-            raw_df_i = raw_df_i.copy()
+            raw_df_i = load_single(temp_path).copy()
             raw_df_i["source_file"] = file_name
             raw_df_i["_source_order"] = range(len(raw_df_i))
 

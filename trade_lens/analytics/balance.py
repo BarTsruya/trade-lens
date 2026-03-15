@@ -24,10 +24,6 @@ def _empty_result() -> pd.DataFrame:
     return pd.DataFrame(columns=EMPTY_COLUMNS)
 
 
-def _format_amount(value: float, currency: str) -> str:
-    return f"{value:+,.2f} {currency}"
-
-
 def balance_timeline_actions(ledger_df: pd.DataFrame) -> pd.DataFrame:
     df = ledger_df.copy()
 
@@ -75,7 +71,7 @@ def balance_timeline_actions(ledger_df: pd.DataFrame) -> pd.DataFrame:
         paper_name = str(row.get("paper_name", "") or "")
 
         if action_type == transfer_action:
-            return f"ILS deposit: {_format_amount(ils_delta, 'ILS')}"
+            return f"ILS deposit: {ils_delta:+,.2f} ILS"
 
         if action_type == conversion_action and symbol == "99028":
             conversion_text = f"ILS->USD conversion: {abs(ils_delta):,.2f} ILS -> {abs(usd_delta):,.2f} USD"
@@ -131,9 +127,4 @@ def balance_timeline_actions(ledger_df: pd.DataFrame) -> pd.DataFrame:
     return out[EMPTY_COLUMNS]
 
 
-def balance_timeline_daily(ledger_df: pd.DataFrame) -> pd.DataFrame:
-    # Backward-compatible alias for existing callers.
-    return balance_timeline_actions(ledger_df)
-
-
-__all__ = ["balance_timeline_actions", "balance_timeline_daily"]
+__all__ = ["balance_timeline_actions"]

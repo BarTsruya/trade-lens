@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Sequence
 
 import pandas as pd
 
@@ -76,35 +75,14 @@ HEBREW_ACTION_TYPE_MAP = {
 }
 
 
-class IbiRawLoader:
-    """Load IBI Excel exports (.xlsx) and normalize Hebrew columns to internal names."""
-
-    def __init__(self, paths: str | Sequence[str]) -> None:
-        self.paths = [paths] if isinstance(paths, str) else list(paths)
-        if not self.paths:
-            raise ValueError("At least one resource path is required.")
-        self.df: pd.DataFrame | None = None
-
-    def _load_single(self, path: str) -> pd.DataFrame:
-        df = pd.read_excel(path)
-        df.rename(columns=HEBREW_COLUMNS_MAP, inplace=True)
-
-        if RawDataAttribute.ACTION_TYPE.value in df.columns:
-            action_col = RawDataAttribute.ACTION_TYPE.value
-            df[action_col] = df[action_col].astype("string").str.strip().map(HEBREW_ACTION_TYPE_MAP)
-        return df
-
-    def load(self) -> pd.DataFrame:
-        frames = [self._load_single(path) for path in self.paths]
-        self.df = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
-
-        date_col = RawDataAttribute.ACTION_DATE.value
-        if date_col in self.df.columns:
-            self.df[date_col] = pd.to_datetime(self.df[date_col], dayfirst=True, errors="coerce")
-            self.df.sort_values(by=date_col, inplace=True, kind="mergesort", na_position="last")
-            self.df.reset_index(drop=True, inplace=True)
-
-        return self.df
+def load_single(path: str) -> pd.DataFrame:
+    """Load one IBI Excel export (.xlsx) and normalize Hebrew columns to internal names."""
+    df = pd.read_excel(path)
+    df.rename(columns=HEBREW_COLUMNS_MAP, inplace=True)
+    if RawDataAttribute.ACTION_TYPE.value in df.columns:
+        action_col = RawDataAttribute.ACTION_TYPE.value
+        df[action_col] = df[action_col].astype("string").str.strip().map(HEBREW_ACTION_TYPE_MAP)
+    return df
 
 
 __all__ = [
@@ -112,5 +90,5 @@ __all__ = [
     "RawActionType",
     "HEBREW_COLUMNS_MAP",
     "HEBREW_ACTION_TYPE_MAP",
-    "IbiRawLoader",
+    "load_single",
 ]
