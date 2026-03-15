@@ -96,7 +96,7 @@ def build_tax_ledger(ledger_df: pd.DataFrame) -> pd.DataFrame:
             shield_state = 0.0
         elif action_type == RawActionType.TAX_CREDIT.value:
             shield_state = max(0.0, shield_state - amount)
-            annual_tax_total -= amount
+            annual_tax_total = max(0.0, annual_tax_total - amount)
         elif action_type == RawActionType.TAX_PAYABLE.value:
             if shield_state >= amount:
                 shield_state -= amount
