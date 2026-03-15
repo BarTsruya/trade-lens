@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import io
 from enum import Enum
+from typing import Union
 
 import pandas as pd
 
@@ -75,9 +77,9 @@ HEBREW_ACTION_TYPE_MAP = {
 }
 
 
-def load_single(path: str) -> pd.DataFrame:
+def load_single(source: Union[str, io.IOBase]) -> pd.DataFrame:
     """Load one IBI Excel export (.xlsx) and normalize Hebrew columns to internal names."""
-    df = pd.read_excel(path)
+    df = pd.read_excel(source)
     df.rename(columns=HEBREW_COLUMNS_MAP, inplace=True)
     if RawDataAttribute.ACTION_TYPE.value in df.columns:
         action_col = RawDataAttribute.ACTION_TYPE.value

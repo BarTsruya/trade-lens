@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
+import io
 from typing import Sequence
 
 import pandas as pd
@@ -23,37 +22,26 @@ def load_and_normalize_many(
     ledger_frames: list[pd.DataFrame] = []
 
     for file_name, file_bytes in file_payloads:
-        suffix = Path(file_name).suffix or ".xlsx"
-        temp_path: str | None = None
+        raw_df_i = load_single(io.BytesIO(file_bytes)).copy()
+        raw_df_i["source_file"] = file_name
+        raw_df_i["_source_order"] = range(len(raw_df_i))
 
-        try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                tmp.write(file_bytes)
-                temp_path = tmp.name
+        date_col = RawDataAttribute.ACTION_DATE.value
+        if date_col in raw_df_i.columns:
+            raw_dates = pd.to_datetime(raw_df_i[date_col], dayfirst=True, errors="coerce")
+            valid_dates = raw_dates.dropna()
+            is_desc = bool(len(valid_dates) >= 2 and valid_dates.iloc[0] > valid_dates.iloc[-1])
+            raw_df_i[date_col] = raw_dates
+        else:
+            is_desc = False
+        raw_df_i["_date_desc"] = is_desc
 
-            raw_df_i = load_single(temp_path).copy()
-            raw_df_i["source_file"] = file_name
-            raw_df_i["_source_order"] = range(len(raw_df_i))
+        ledger_df_i = to_ledger(raw_df_i).copy()
+        ledger_df_i["source_file"] = file_name
+        ledger_df_i["ledger_row_id"] = [f"{file_name}:{idx}" for idx in ledger_df_i.index]
 
-            date_col = RawDataAttribute.ACTION_DATE.value
-            if date_col in raw_df_i.columns:
-                raw_dates = pd.to_datetime(raw_df_i[date_col], dayfirst=True, errors="coerce")
-                valid_dates = raw_dates.dropna()
-                is_desc = bool(len(valid_dates) >= 2 and valid_dates.iloc[0] > valid_dates.iloc[-1])
-                raw_df_i[date_col] = raw_dates
-            else:
-                is_desc = False
-            raw_df_i["_date_desc"] = is_desc
-
-            ledger_df_i = to_ledger(raw_df_i).copy()
-            ledger_df_i["source_file"] = file_name
-            ledger_df_i["ledger_row_id"] = [f"{file_name}:{idx}" for idx in ledger_df_i.index]
-
-            raw_frames.append(raw_df_i)
-            ledger_frames.append(ledger_df_i)
-        finally:
-            if temp_path:
-                Path(temp_path).unlink(missing_ok=True)
+        raw_frames.append(raw_df_i)
+        ledger_frames.append(ledger_df_i)
 
     if not raw_frames or not ledger_frames:
         return pd.DataFrame(), pd.DataFrame()
