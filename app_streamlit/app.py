@@ -54,7 +54,7 @@ except Exception as exc:
     st.exception(exc)
     st.stop()
 
-unknown_action_rows = count_unknown_action_rows(raw)
+unknown_action_rows = count_unknown_action_rows(ledger)
 if unknown_action_rows > 0:
     st.warning(
         f"Loaded {len(uploaded_files):,} file(s): {len(raw):,} raw rows and normalized to {len(ledger):,} ledger rows. "

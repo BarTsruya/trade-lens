@@ -106,11 +106,11 @@ def sort_ledger(ledger: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def count_unknown_action_rows(raw: pd.DataFrame) -> int:
-    """Return the number of rows with unrecognized (null or empty) action types."""
-    if "action_type" not in raw.columns:
+def count_unknown_action_rows(ledger: pd.DataFrame) -> int:
+    """Return the number of ledger rows whose action_type is still unresolved (null or empty)."""
+    if "action_type" not in ledger.columns:
         return 0
-    series = raw["action_type"].astype("string")
+    series = ledger["action_type"].astype("string")
     return int((series.isna() | series.str.strip().eq("")).sum())
 
 
