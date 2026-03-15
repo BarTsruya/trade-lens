@@ -8,6 +8,7 @@
 - [ ] fix full_range button warning
 - [ ] add expected ils balance to balance table
       - detect mismatch
+- [ ] save cache in case of refreash it would display the GUI with loaded data
 
 ## 2) Balance tab (cash timeline)
 

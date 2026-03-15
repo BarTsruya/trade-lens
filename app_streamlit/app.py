@@ -258,7 +258,6 @@ with tab_taxes:
             # --- Pre-event snapshot columns (shift(1) gives state before each row) ---
             taxes_y["pre_tax_payable_state"] = taxes_y["tax_payable_state"].shift(1).fillna(0.0)
             taxes_y["pre_tax_shield_state"]  = taxes_y["tax_shield_state"].shift(1).fillna(0.0)
-            taxes_y["pre_total_annual_tax"]  = taxes_y["total_annual_tax"].shift(1).fillna(0.0)
             taxes_y["month"] = taxes_y["date"].dt.to_period("M").dt.to_timestamp()
 
             # --- Canonical 12-month axis ---
@@ -266,122 +265,97 @@ with tab_taxes:
                 "month": pd.date_range(start=f"{selected_year}-01-01", periods=12, freq="MS")
             })
 
-            # --- Chart 1: Payments ---
-            _pay_val = RawActionType.TAX_PAYMENT.value
-            _pay_rows = taxes_y[taxes_y["action_type"].astype("string") == _pay_val]
+            _pay_val  = RawActionType.TAX_PAYMENT.value
+            _cred_val = RawActionType.TAX_CREDIT.value
+            _pay_rows  = taxes_y[taxes_y["action_type"].astype("string") == _pay_val]
+            _cred_rows = taxes_y[taxes_y["action_type"].astype("string") == _cred_val]
 
-            # first payment event per month for snapshot
+            # Snapshot: first payment event per month -> pre-event payable/shield
             _pay_snap = (
                 _pay_rows.groupby("month", sort=True)
                 .first()[["pre_tax_payable_state", "pre_tax_shield_state"]]
                 .reset_index()
             )
-            # summed payment amount per month
+            # Summed amounts per month
             _pay_amt = (
                 _pay_rows.groupby("month", sort=True)["amount_value"]
-                .sum()
-                .reset_index()
+                .sum().reset_index()
                 .rename(columns={"amount_value": "payment_amount"})
-            )
-            _chart1 = (
-                months_df
-                .merge(_pay_snap, on="month", how="left")
-                .merge(_pay_amt, on="month", how="left")
-                .fillna(0.0)
-            )
-            _month_labels = _chart1["month"].dt.strftime("%b")
-
-            _fig1 = go.Figure()
-            _fig1.add_trace(go.Bar(
-                name="Payable (before payment)",
-                x=_month_labels,
-                y=_chart1["pre_tax_payable_state"],
-                marker_color="gray",
-                offsetgroup="payable",
-            ))
-            _fig1.add_trace(go.Bar(
-                name="Shield (before payment)",
-                x=_month_labels,
-                y=_chart1["pre_tax_shield_state"],
-                marker_color="goldenrod",
-                offsetgroup="settlement",
-            ))
-            _fig1.add_trace(go.Bar(
-                name="Payment Amount",
-                x=_month_labels,
-                y=_chart1["payment_amount"],
-                marker_color="crimson",
-                offsetgroup="settlement",
-            ))
-            _fig1.update_layout(
-                barmode="relative",
-                title=f"Tax Payments ({selected_year}) — Pre-payment Payable/Shield Snapshot",
-                xaxis_title="Month",
-                yaxis_title="ILS (₪)",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            )
-            st.plotly_chart(_fig1, use_container_width=True)
-
-            # --- Chart 2: Credits ---
-            _cred_val = RawActionType.TAX_CREDIT.value
-            _cred_rows = taxes_y[taxes_y["action_type"].astype("string") == _cred_val]
-
-            _cred_snap = (
-                _cred_rows.groupby("month", sort=True)
-                .first()[["pre_tax_payable_state", "pre_tax_shield_state", "pre_total_annual_tax"]]
-                .reset_index()
             )
             _cred_amt = (
                 _cred_rows.groupby("month", sort=True)["amount_value"]
-                .sum()
-                .reset_index()
+                .sum().reset_index()
                 .rename(columns={"amount_value": "credit_amount"})
             )
-            _chart2 = (
+
+            _chart = (
                 months_df
-                .merge(_cred_snap, on="month", how="left")
+                .merge(_pay_snap, on="month", how="left")
+                .merge(_pay_amt,  on="month", how="left")
                 .merge(_cred_amt, on="month", how="left")
                 .fillna(0.0)
             )
-            _month_labels2 = _chart2["month"].dt.strftime("%b")
+            _month_labels = _chart["month"].dt.strftime("%b")
 
-            _fig2 = go.Figure()
-            _fig2.add_trace(go.Bar(
-                name="Payable (before credit)",
-                x=_month_labels2,
-                y=_chart2["pre_tax_payable_state"],
+            _fig = go.Figure()
+            _fig.add_trace(go.Bar(
+                name="Payable (before payment)",
+                x=_month_labels,
+                y=_chart["pre_tax_payable_state"],
                 marker_color="gray",
+                offsetgroup="payable",
             ))
-            _fig2.add_trace(go.Bar(
-                name="Shield (before credit)",
-                x=_month_labels2,
-                y=_chart2["pre_tax_shield_state"],
+            _fig.add_trace(go.Bar(
+                name="Shield (before payment)",
+                x=_month_labels,
+                y=_chart["pre_tax_shield_state"],
                 marker_color="goldenrod",
+                offsetgroup="settlement",
             ))
-            _fig2.add_trace(go.Bar(
+            _fig.add_trace(go.Bar(
+                name="Payment Amount",
+                x=_month_labels,
+                y=_chart["payment_amount"],
+                marker_color="crimson",
+                offsetgroup="settlement",
+            ))
+            _fig.add_trace(go.Bar(
                 name="Credit Amount",
-                x=_month_labels2,
-                y=_chart2["credit_amount"],
+                x=_month_labels,
+                y=_chart["credit_amount"],
                 marker_color="seagreen",
+                offsetgroup="credit",
             ))
-            _fig2.add_trace(go.Bar(
-                name="Total Annual Tax (before credit)",
-                x=_month_labels2,
-                y=_chart2["pre_total_annual_tax"],
-                marker_color="mediumpurple",
-            ))
-            _fig2.update_layout(
-                barmode="group",
-                title=f"Tax Credits ({selected_year}) — Pre-credit Snapshot + Annual Tax",
+            _fig.update_layout(
+                barmode="relative",
+                title=f"Taxes — Payable/Shield snapshot + Payments/Credits (Monthly) [{selected_year}]",
                 xaxis_title="Month",
                 yaxis_title="ILS (₪)",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             )
-            st.plotly_chart(_fig2, use_container_width=True)
+            st.plotly_chart(_fig, width="stretch")
+
+            # --- Summary ---
+            st.subheader("Summary")
+            _payable_rows = taxes_y[taxes_y["action_type"].astype("string") == RawActionType.TAX_PAYABLE.value]
+            _payable_sum  = float(_payable_rows["amount_value"].sum())
+            _payment_sum  = float(_pay_rows["amount_value"].sum())
+            _credit_sum   = float(_cred_rows["amount_value"].sum())
+            _annual_tax   = _payment_sum - _credit_sum
+            _remaining_shield = (
+                float(taxes_y["tax_shield_state"].dropna().iloc[-1])
+                if not taxes_y.empty and taxes_y["tax_shield_state"].notna().any()
+                else 0.0
+            )
+            _sum_col1, _sum_col2, _sum_col3, _sum_col4 = st.columns(4)
+            _sum_col1.metric("Total Tax Payables", f"₪{_payable_sum:,.2f}")
+            _sum_col2.metric("Total Tax Credits",  f"₪{_credit_sum:,.2f}")
+            _sum_col3.metric("Annual Tax (payments − credits)", f"₪{_annual_tax:,.2f}")
+            _sum_col4.metric("Remaining Tax Shield", f"₪{_remaining_shield:,.2f}")
 
             # --- Table (year-filtered, formatted) ---
             taxes_display_df = taxes_y.drop(
-                columns=["pre_tax_payable_state", "pre_tax_shield_state", "pre_total_annual_tax", "month"],
+                columns=["pre_tax_payable_state", "pre_tax_shield_state", "month"],
                 errors="ignore",
             ).copy()
 
