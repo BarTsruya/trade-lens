@@ -19,7 +19,7 @@ def build_tax_ledger(ledger_df: pd.DataFrame) -> pd.DataFrame:
 
     Returns a DataFrame with columns:
       date, action_type, paper_name, amount (formatted str),
-      tax_shield_state (float), tax_payable_state (float),
+      amount_value (float, ILS), tax_shield_state (float), tax_payable_state (float),
       total_annual_tax (float), _annual_year_end (bool),
       _display_idx (passed through if present in input).
 
@@ -109,6 +109,7 @@ def build_tax_ledger(ledger_df: pd.DataFrame) -> pd.DataFrame:
     taxes_df["tax_shield_state"] = pd.Series(shield_state_values, index=taxes_df.index)
     taxes_df["tax_payable_state"] = pd.Series(payable_state_values, index=taxes_df.index)
     taxes_df["total_annual_tax"] = pd.Series(annual_tax_values, index=taxes_df.index)
+    taxes_df["amount_value"] = amount_value
 
     year_series = taxes_df["date"].dt.year
     taxes_df["_annual_year_end"] = (year_series != year_series.shift(-1)).fillna(True)
@@ -118,6 +119,7 @@ def build_tax_ledger(ledger_df: pd.DataFrame) -> pd.DataFrame:
         "action_type",
         "paper_name",
         "amount",
+        "amount_value",
         "tax_shield_state",
         "tax_payable_state",
         "total_annual_tax",

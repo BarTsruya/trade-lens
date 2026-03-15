@@ -5,6 +5,7 @@ from typing import Tuple
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 from display_utils import (
@@ -243,6 +244,49 @@ with tab_taxes:
         if taxes_table_df.empty:
             st.info("No tax-related actions found.")
         else:
+            # --- Event bar chart (uses raw numeric values, before string formatting) ---
+            _event_types = {RawActionType.TAX_PAYMENT.value, RawActionType.TAX_CREDIT.value}
+            _chart_df = taxes_table_df.sort_values("date", ascending=True, kind="mergesort").reset_index(drop=True)
+            _chart_df["_pre_payable"] = _chart_df["tax_payable_state"].shift(1).fillna(0.0)
+            _chart_df["_pre_shield"] = _chart_df["tax_shield_state"].shift(1).fillna(0.0)
+            _event_rows = _chart_df[_chart_df["action_type"].astype("string").isin(_event_types)].copy()
+            if not _event_rows.empty:
+                _event_rows["_x_label"] = (
+                    pd.to_datetime(_event_rows["date"]).dt.strftime("%Y-%m-%d")
+                    + " " + _event_rows["action_type"].astype(str)
+                )
+                _event_colors = [
+                    "crimson" if at == RawActionType.TAX_PAYMENT.value else "seagreen"
+                    for at in _event_rows["action_type"].astype(str)
+                ]
+                _fig = go.Figure()
+                _fig.add_trace(go.Bar(
+                    name="Payable (before event)",
+                    x=_event_rows["_x_label"],
+                    y=_event_rows["_pre_payable"],
+                    marker_color="steelblue",
+                ))
+                _fig.add_trace(go.Bar(
+                    name="Shield (before event)",
+                    x=_event_rows["_x_label"],
+                    y=_event_rows["_pre_shield"],
+                    marker_color="goldenrod",
+                ))
+                _fig.add_trace(go.Bar(
+                    name="Event Amount",
+                    x=_event_rows["_x_label"],
+                    y=_event_rows["amount_value"],
+                    marker_color=_event_colors,
+                ))
+                _fig.update_layout(
+                    barmode="group",
+                    title="Tax Payment / Credit Events — Snapshot Before Event",
+                    xaxis_title="Event",
+                    yaxis_title="Amount (₪)",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                )
+                st.plotly_chart(_fig, use_container_width=True)
+
             for col in ("tax_shield_state", "tax_payable_state", "total_annual_tax"):
                 taxes_table_df[col] = taxes_table_df[col].map(lambda v: format_signed_currency(v, "₪"))
 
@@ -252,7 +296,7 @@ with tab_taxes:
             annual_year_end_index = set(
                 taxes_table_df.index[taxes_table_df["_annual_year_end"].fillna(False)].tolist()
             )
-            taxes_table_df = taxes_table_df.drop(columns=["_annual_year_end"])
+            taxes_table_df = taxes_table_df.drop(columns=["_annual_year_end", "amount_value"], errors="ignore")
             taxes_table_df = df_dates_to_date_only(taxes_table_df)
 
             def _style_tax_amount(row: pd.Series) -> list[str]:
