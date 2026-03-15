@@ -23,7 +23,7 @@ from trade_lens.analytics.ledger import (
 )
 from trade_lens.analytics.taxes import build_tax_ledger
 from trade_lens.brokers.ibi import RawActionType
-from trade_lens.pipeline.loader import count_unknown_action_rows, load_and_normalize_many
+from trade_lens.pipeline.loader import count_unknown_action_rows, get_unknown_action_details, load_and_normalize_many
 
 
 st.set_page_config(page_title="Trade Lens", layout="wide")
@@ -60,6 +60,21 @@ if unknown_action_rows > 0:
         f"Loaded {len(uploaded_files):,} file(s): {len(raw):,} raw rows and normalized to {len(ledger):,} ledger rows. "
         f"Detected {unknown_action_rows:,} row(s) with unrecognized action types."
     )
+    with st.expander(f"Show unrecognized rows ({unknown_action_rows:,})", expanded=False):
+        unknown_details = get_unknown_action_details(raw, ledger)
+        if not unknown_details.empty:
+            display_details = unknown_details.copy()
+            if "date" in display_details.columns:
+                display_details["date"] = pd.to_datetime(display_details["date"], errors="coerce").dt.date
+            if len(uploaded_files) == 1 and "source_file" in display_details.columns:
+                display_details = display_details.drop(columns=["source_file"])
+            for usd_col in ("usd_amount",):
+                if usd_col in display_details.columns:
+                    display_details[usd_col] = display_details[usd_col].map(lambda v: format_signed_currency(v, "$"))
+            if "ils_amount" in display_details.columns:
+                display_details["ils_amount"] = display_details["ils_amount"].map(lambda v: format_signed_currency(v, "₪"))
+            st.caption("'raw_action_type' is the original unrecognized string from the broker export. Add it to HEBREW_ACTION_TYPE_MAP in ibi.py to resolve it.")
+            st.dataframe(display_details, hide_index=True)
 else:
     st.success(
         f"Loaded {len(uploaded_files):,} file(s): {len(raw):,} raw rows and normalized to {len(ledger):,} ledger rows."

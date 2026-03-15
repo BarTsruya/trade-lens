@@ -114,4 +114,44 @@ def count_unknown_action_rows(ledger: pd.DataFrame) -> int:
     return int((series.isna() | series.str.strip().eq("")).sum())
 
 
-__all__ = ["load_and_normalize_many", "sort_ledger", "count_unknown_action_rows"]
+def get_unknown_action_details(raw: pd.DataFrame, ledger: pd.DataFrame) -> pd.DataFrame:
+    """Return a detail DataFrame for ledger rows whose action_type is still unresolved.
+
+    Columns: date, source_file (if available), raw_action_type (original Hebrew string),
+    usd_amount, ils_amount.
+    """
+    if "action_type" not in ledger.columns:
+        return pd.DataFrame()
+
+    ledger_series = ledger["action_type"].astype("string")
+    unknown_mask = ledger_series.isna() | ledger_series.str.strip().eq("")
+    join_cols = [c for c in ("source_file", "_source_order") if c in ledger.columns]
+    keep_cols = ["date"] + join_cols
+    unknown_ledger = ledger.loc[unknown_mask, keep_cols].copy()
+
+    if unknown_ledger.empty:
+        return pd.DataFrame()
+
+    if join_cols:
+        raw_extra_cols = [c for c in (
+            "_raw_action_type",
+            RawDataAttribute.RAW_USD_AMOUNT.value,
+            RawDataAttribute.RAW_ILS_AMOUNT.value,
+        ) if c in raw.columns]
+        merged = unknown_ledger.merge(raw[join_cols + raw_extra_cols], on=join_cols, how="left")
+    else:
+        merged = unknown_ledger.copy()
+
+    merged.rename(
+        columns={
+            "_raw_action_type": "raw_action_type",
+            RawDataAttribute.RAW_USD_AMOUNT.value: "usd_amount",
+            RawDataAttribute.RAW_ILS_AMOUNT.value: "ils_amount",
+        },
+        inplace=True,
+    )
+    merged.drop(columns=["_source_order"], errors="ignore", inplace=True)
+    return merged
+
+
+__all__ = ["load_and_normalize_many", "sort_ledger", "count_unknown_action_rows", "get_unknown_action_details"]

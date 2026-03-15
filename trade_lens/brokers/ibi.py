@@ -81,7 +81,9 @@ def load_single(path: str) -> pd.DataFrame:
     df.rename(columns=HEBREW_COLUMNS_MAP, inplace=True)
     if RawDataAttribute.ACTION_TYPE.value in df.columns:
         action_col = RawDataAttribute.ACTION_TYPE.value
-        df[action_col] = df[action_col].astype("string").str.strip().map(HEBREW_ACTION_TYPE_MAP)
+        raw_strings = df[action_col].astype("string").str.strip()
+        df["_raw_action_type"] = raw_strings
+        df[action_col] = raw_strings.map(HEBREW_ACTION_TYPE_MAP)
     return df
 
 
