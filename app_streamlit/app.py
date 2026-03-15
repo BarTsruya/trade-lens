@@ -244,60 +244,158 @@ with tab_taxes:
         if taxes_table_df.empty:
             st.info("No tax-related actions found.")
         else:
-            # --- Event bar chart (uses raw numeric values, before string formatting) ---
-            _event_types = {RawActionType.TAX_PAYMENT.value, RawActionType.TAX_CREDIT.value}
-            _chart_df = taxes_table_df.sort_values("date", ascending=True, kind="mergesort").reset_index(drop=True)
-            _chart_df["_pre_payable"] = _chart_df["tax_payable_state"].shift(1).fillna(0.0)
-            _chart_df["_pre_shield"] = _chart_df["tax_shield_state"].shift(1).fillna(0.0)
-            _event_rows = _chart_df[_chart_df["action_type"].astype("string").isin(_event_types)].copy()
-            if not _event_rows.empty:
-                _event_rows["_x_label"] = (
-                    pd.to_datetime(_event_rows["date"]).dt.strftime("%Y-%m-%d")
-                    + " " + _event_rows["action_type"].astype(str)
-                )
-                _event_colors = [
-                    "crimson" if at == RawActionType.TAX_PAYMENT.value else "seagreen"
-                    for at in _event_rows["action_type"].astype(str)
-                ]
-                _fig = go.Figure()
-                _fig.add_trace(go.Bar(
-                    name="Payable (before event)",
-                    x=_event_rows["_x_label"],
-                    y=_event_rows["_pre_payable"],
-                    marker_color="steelblue",
-                ))
-                _fig.add_trace(go.Bar(
-                    name="Shield (before event)",
-                    x=_event_rows["_x_label"],
-                    y=_event_rows["_pre_shield"],
-                    marker_color="goldenrod",
-                ))
-                _fig.add_trace(go.Bar(
-                    name="Event Amount",
-                    x=_event_rows["_x_label"],
-                    y=_event_rows["amount_value"],
-                    marker_color=_event_colors,
-                ))
-                _fig.update_layout(
-                    barmode="group",
-                    title="Tax Payment / Credit Events — Snapshot Before Event",
-                    xaxis_title="Event",
-                    yaxis_title="Amount (₪)",
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                )
-                st.plotly_chart(_fig, use_container_width=True)
+            taxes_table_df["date"] = pd.to_datetime(taxes_table_df["date"], errors="coerce")
+
+            # --- Year filter ---
+            _available_years = sorted(taxes_table_df["date"].dt.year.dropna().unique().astype(int), reverse=True)
+            selected_year = st.selectbox("Year", options=_available_years, index=0, key="taxes_year_filter")
+
+            # --- Filter to selected year and sort chronologically ---
+            taxes_y = taxes_table_df[taxes_table_df["date"].dt.year == selected_year].copy()
+            _sort_cols = ["date", "_display_idx"] if "_display_idx" in taxes_y.columns else ["date"]
+            taxes_y = taxes_y.sort_values(_sort_cols, ascending=True, kind="mergesort").reset_index(drop=True)
+
+            # --- Pre-event snapshot columns (shift(1) gives state before each row) ---
+            taxes_y["pre_tax_payable_state"] = taxes_y["tax_payable_state"].shift(1).fillna(0.0)
+            taxes_y["pre_tax_shield_state"]  = taxes_y["tax_shield_state"].shift(1).fillna(0.0)
+            taxes_y["pre_total_annual_tax"]  = taxes_y["total_annual_tax"].shift(1).fillna(0.0)
+            taxes_y["month"] = taxes_y["date"].dt.to_period("M").dt.to_timestamp()
+
+            # --- Canonical 12-month axis ---
+            months_df = pd.DataFrame({
+                "month": pd.date_range(start=f"{selected_year}-01-01", periods=12, freq="MS")
+            })
+
+            # --- Chart 1: Payments ---
+            _pay_val = RawActionType.TAX_PAYMENT.value
+            _pay_rows = taxes_y[taxes_y["action_type"].astype("string") == _pay_val]
+
+            # first payment event per month for snapshot
+            _pay_snap = (
+                _pay_rows.groupby("month", sort=True)
+                .first()[["pre_tax_payable_state", "pre_tax_shield_state"]]
+                .reset_index()
+            )
+            # summed payment amount per month
+            _pay_amt = (
+                _pay_rows.groupby("month", sort=True)["amount_value"]
+                .sum()
+                .reset_index()
+                .rename(columns={"amount_value": "payment_amount"})
+            )
+            _chart1 = (
+                months_df
+                .merge(_pay_snap, on="month", how="left")
+                .merge(_pay_amt, on="month", how="left")
+                .fillna(0.0)
+            )
+            _month_labels = _chart1["month"].dt.strftime("%b")
+
+            _fig1 = go.Figure()
+            _fig1.add_trace(go.Bar(
+                name="Payable (before payment)",
+                x=_month_labels,
+                y=_chart1["pre_tax_payable_state"],
+                marker_color="gray",
+                offsetgroup="payable",
+            ))
+            _fig1.add_trace(go.Bar(
+                name="Shield (before payment)",
+                x=_month_labels,
+                y=_chart1["pre_tax_shield_state"],
+                marker_color="goldenrod",
+                offsetgroup="settlement",
+            ))
+            _fig1.add_trace(go.Bar(
+                name="Payment Amount",
+                x=_month_labels,
+                y=_chart1["payment_amount"],
+                marker_color="crimson",
+                offsetgroup="settlement",
+            ))
+            _fig1.update_layout(
+                barmode="relative",
+                title=f"Tax Payments ({selected_year}) — Pre-payment Payable/Shield Snapshot",
+                xaxis_title="Month",
+                yaxis_title="ILS (₪)",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            )
+            st.plotly_chart(_fig1, use_container_width=True)
+
+            # --- Chart 2: Credits ---
+            _cred_val = RawActionType.TAX_CREDIT.value
+            _cred_rows = taxes_y[taxes_y["action_type"].astype("string") == _cred_val]
+
+            _cred_snap = (
+                _cred_rows.groupby("month", sort=True)
+                .first()[["pre_tax_payable_state", "pre_tax_shield_state", "pre_total_annual_tax"]]
+                .reset_index()
+            )
+            _cred_amt = (
+                _cred_rows.groupby("month", sort=True)["amount_value"]
+                .sum()
+                .reset_index()
+                .rename(columns={"amount_value": "credit_amount"})
+            )
+            _chart2 = (
+                months_df
+                .merge(_cred_snap, on="month", how="left")
+                .merge(_cred_amt, on="month", how="left")
+                .fillna(0.0)
+            )
+            _month_labels2 = _chart2["month"].dt.strftime("%b")
+
+            _fig2 = go.Figure()
+            _fig2.add_trace(go.Bar(
+                name="Payable (before credit)",
+                x=_month_labels2,
+                y=_chart2["pre_tax_payable_state"],
+                marker_color="gray",
+            ))
+            _fig2.add_trace(go.Bar(
+                name="Shield (before credit)",
+                x=_month_labels2,
+                y=_chart2["pre_tax_shield_state"],
+                marker_color="goldenrod",
+            ))
+            _fig2.add_trace(go.Bar(
+                name="Credit Amount",
+                x=_month_labels2,
+                y=_chart2["credit_amount"],
+                marker_color="seagreen",
+            ))
+            _fig2.add_trace(go.Bar(
+                name="Total Annual Tax (before credit)",
+                x=_month_labels2,
+                y=_chart2["pre_total_annual_tax"],
+                marker_color="mediumpurple",
+            ))
+            _fig2.update_layout(
+                barmode="group",
+                title=f"Tax Credits ({selected_year}) — Pre-credit Snapshot + Annual Tax",
+                xaxis_title="Month",
+                yaxis_title="ILS (₪)",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            )
+            st.plotly_chart(_fig2, use_container_width=True)
+
+            # --- Table (year-filtered, formatted) ---
+            taxes_display_df = taxes_y.drop(
+                columns=["pre_tax_payable_state", "pre_tax_shield_state", "pre_total_annual_tax", "month"],
+                errors="ignore",
+            ).copy()
 
             for col in ("tax_shield_state", "tax_payable_state", "total_annual_tax"):
-                taxes_table_df[col] = taxes_table_df[col].map(lambda v: format_signed_currency(v, "₪"))
+                taxes_display_df[col] = taxes_display_df[col].map(lambda v: format_signed_currency(v, "₪"))
 
-            taxes_table_df = order_table_newest_first_with_chrono_index(taxes_table_df, "date")
-            if "_display_idx" in taxes_table_df.columns:
-                taxes_table_df = taxes_table_df.drop(columns=["_display_idx"])
+            taxes_display_df = order_table_newest_first_with_chrono_index(taxes_display_df, "date")
+            if "_display_idx" in taxes_display_df.columns:
+                taxes_display_df = taxes_display_df.drop(columns=["_display_idx"])
             annual_year_end_index = set(
-                taxes_table_df.index[taxes_table_df["_annual_year_end"].fillna(False)].tolist()
+                taxes_display_df.index[taxes_display_df["_annual_year_end"].fillna(False)].tolist()
             )
-            taxes_table_df = taxes_table_df.drop(columns=["_annual_year_end", "amount_value"], errors="ignore")
-            taxes_table_df = df_dates_to_date_only(taxes_table_df)
+            taxes_display_df = taxes_display_df.drop(columns=["_annual_year_end", "amount_value"], errors="ignore")
+            taxes_display_df = df_dates_to_date_only(taxes_display_df)
 
             def _style_tax_amount(row: pd.Series) -> list[str]:
                 styles = [""] * len(row)
@@ -313,4 +411,4 @@ with tab_taxes:
                     styles[annual_idx] = "font-weight: 700;"
                 return styles
 
-            st.dataframe(taxes_table_df.style.apply(_style_tax_amount, axis=1), width="stretch", hide_index=False)
+            st.dataframe(taxes_display_df.style.apply(_style_tax_amount, axis=1), width="stretch", hide_index=False)
