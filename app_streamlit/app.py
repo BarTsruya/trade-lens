@@ -11,6 +11,7 @@ import streamlit as st
 
 from trade_lens.analytics.balance import balance_timeline_actions
 from trade_lens.analytics.cashflow import monthly_fees_breakdown
+from trade_lens.analytics.taxes import build_tax_ledger
 from trade_lens.brokers.ibi import IbiRawLoader, RawActionType, RawDataAttribute
 from trade_lens.pipeline.normalize import to_ledger
 
@@ -19,14 +20,6 @@ st.set_page_config(page_title="Trade Lens", layout="wide")
 st.title("Trade Lens - IBI Actions Explorer")
 st.caption("Upload an IBI actions .xlsx export to inspect ledger, cashflow, fees, and symbol activity.")
 
-
-TAX_ACTION_TYPES = {
-    RawActionType.TAX_SHIELD_ACCRUAL.value,
-    RawActionType.TAX_SHIELD_RESET.value,
-    RawActionType.TAX_PAYABLE.value,
-    RawActionType.TAX_PAYMENT.value,
-    RawActionType.TAX_CREDIT.value,
-}
 
 
 def df_dates_to_date_only(df: pd.DataFrame) -> pd.DataFrame:
@@ -434,113 +427,19 @@ with tab_taxes:
             "Cannot build taxes table because required columns are missing: " + ", ".join(missing_cols)
         )
     else:
-        taxes_df = ledger.loc[ledger["action_type"].astype("string").isin(TAX_ACTION_TYPES)].copy()
-        if taxes_df.empty:
+        taxes_table_df = build_tax_ledger(ledger)
+        if taxes_table_df.empty:
             st.info("No tax-related actions found.")
         else:
-            taxes_df["date"] = pd.to_datetime(taxes_df["date"], errors="coerce")
-            taxes_df = taxes_df.loc[taxes_df["date"].notna()].copy()
-            taxes_df.sort_values(by="date", ascending=True, inplace=True, kind="mergesort")
+            for col in ("tax_shield_state", "tax_paymant_state", "total_annual_tax"):
+                taxes_table_df[col] = taxes_table_df[col].map(lambda v: _format_signed_currency(v, "₪"))
 
-            ils_abs = pd.to_numeric(taxes_df["delta_ils"], errors="coerce").fillna(0.0).abs()
-            usd_abs = pd.to_numeric(taxes_df["delta_usd"], errors="coerce").fillna(0.0).abs()
-            quantity_abs = pd.to_numeric(taxes_df.get("quantity"), errors="coerce").fillna(0.0).abs()
-            currency_series = taxes_df.get("currency", pd.Series("", index=taxes_df.index)).astype("string").fillna("")
-
-            amount_symbol = pd.Series("", index=taxes_df.index, dtype="string")
-            amount_value = pd.Series(0.0, index=taxes_df.index, dtype="float64")
-
-            action_series = taxes_df["action_type"].astype("string")
-            accrual_mask = action_series == RawActionType.TAX_SHIELD_ACCRUAL.value
-            payable_mask = action_series == RawActionType.TAX_PAYABLE.value
-            ils_mask = ils_abs > 0
-            usd_mask = (~ils_mask) & (usd_abs > 0)
-
-            amount_symbol.loc[ils_mask] = "₪"
-            amount_symbol.loc[usd_mask] = "$"
-            amount_value.loc[ils_mask] = ils_abs.loc[ils_mask]
-            amount_value.loc[usd_mask] = usd_abs.loc[usd_mask]
-
-            # Tax shield accrual amount comes from quantity and currency, always positive.
-            amount_value.loc[accrual_mask] = quantity_abs.loc[accrual_mask]
-            amount_symbol.loc[accrual_mask] = "₪"
-
-            # Tax payable amount comes from quantity and should be displayed in ILS.
-            amount_value.loc[payable_mask] = quantity_abs.loc[payable_mask]
-            amount_symbol.loc[payable_mask] = "₪"
-
-            taxes_df["amount"] = amount_symbol.astype(str) + amount_value.map(lambda v: f"{float(v):,.2f}")
-            empty_amount_mask = amount_value == 0
-            if empty_amount_mask.any():
-                taxes_df.loc[empty_amount_mask, "amount"] = "0.00"
-
-            # Build tax shield/payment states in chronological order, then display newest first.
-            shield_state = 0.0
-            paymant_state = 0.0
-            annual_tax_total = 0.0
-            current_year: int | None = None
-            shield_state_values: list[float] = []
-            paymant_state_values: list[float] = []
-            annual_tax_values: list[float] = []
-            for idx, action_type in action_series.items():
-                amount = float(amount_value.loc[idx])
-                row_year = int(taxes_df.loc[idx, "date"].year)
-                if current_year is None or row_year != current_year:
-                    annual_tax_total = 0.0
-                    current_year = row_year
-
-                if action_type == RawActionType.TAX_PAYMENT.value:
-                    shield_state = 0.0
-                    paymant_state = max(0.0, paymant_state - amount)
-                    annual_tax_total += amount
-                elif action_type == RawActionType.TAX_SHIELD_ACCRUAL.value:
-                    offset_amount = min(paymant_state, amount)
-                    paymant_state -= offset_amount
-                    shield_state += amount - offset_amount
-                elif action_type == RawActionType.TAX_SHIELD_RESET.value:
-                    shield_state = 0.0
-                elif action_type == RawActionType.TAX_CREDIT.value:
-                    # Tax credit only reduces shield state and does not affect payment state.
-                    shield_state = max(0.0, shield_state - amount)
-                    annual_tax_total -= amount
-                elif action_type == RawActionType.TAX_PAYABLE.value:
-                    if shield_state >= amount:
-                        shield_state -= amount
-                    else:
-                        paymant_state += amount - shield_state
-                        shield_state = 0.0
-                shield_state_values.append(shield_state)
-                paymant_state_values.append(paymant_state)
-                annual_tax_values.append(annual_tax_total)
-            taxes_df["tax_paymant_state"] = pd.Series(paymant_state_values, index=taxes_df.index)
-            taxes_df["tax_shield_state"] = pd.Series(shield_state_values, index=taxes_df.index)
-            taxes_df["total_annual_tax"] = pd.Series(annual_tax_values, index=taxes_df.index)
-
-            year_series = taxes_df["date"].dt.year
-            taxes_df["_annual_year_end"] = (year_series != year_series.shift(-1)).fillna(True)
-
-            taxes_df["tax_paymant_state"] = taxes_df["tax_paymant_state"].map(lambda v: _format_signed_currency(v, "₪"))
-            taxes_df["tax_shield_state"] = taxes_df["tax_shield_state"].map(lambda v: _format_signed_currency(v, "₪"))
-            taxes_df["total_annual_tax"] = taxes_df["total_annual_tax"].map(lambda v: _format_signed_currency(v, "₪"))
-
-            taxes_table_df = taxes_df[
-                [
-                    "date",
-                    "action_type",
-                    "paper_name",
-                    "amount",
-                    "tax_shield_state",
-                    "tax_paymant_state",
-                    "total_annual_tax",
-                    "_annual_year_end",
-                ]
-            ].copy()
-            if "_display_idx" in taxes_df.columns:
-                taxes_table_df["_display_idx"] = taxes_df["_display_idx"]
             taxes_table_df = order_table_newest_first_with_chrono_index(taxes_table_df, "date")
             if "_display_idx" in taxes_table_df.columns:
                 taxes_table_df = taxes_table_df.drop(columns=["_display_idx"])
-            annual_year_end_index = set(taxes_table_df.index[taxes_table_df["_annual_year_end"].fillna(False)].tolist())
+            annual_year_end_index = set(
+                taxes_table_df.index[taxes_table_df["_annual_year_end"].fillna(False)].tolist()
+            )
             taxes_table_df = taxes_table_df.drop(columns=["_annual_year_end"])
             taxes_table_df = df_dates_to_date_only(taxes_table_df)
 

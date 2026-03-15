@@ -2,8 +2,8 @@
 
 from trade_lens.brokers.ibi import IbiRawLoader, RawActionType, RawDataAttribute
 from trade_lens.pipeline.normalize import to_ledger
-from trade_lens.analytics import monthly_net_cashflow, monthly_fees_breakdown, symbol_summary
-from trade_lens.models import Currency, Action, Transaction, Deposit, Conversion
+from trade_lens.analytics import monthly_net_cashflow, monthly_fees_breakdown, symbol_summary, TAX_ACTION_TYPES, build_tax_ledger
+from trade_lens.models import Currency
 
 __all__ = [
     # Brokers
@@ -16,10 +16,8 @@ __all__ = [
     "monthly_net_cashflow",
     "monthly_fees_breakdown",
     "symbol_summary",
-    # Models (kept for future expansion)
+    "TAX_ACTION_TYPES",
+    "build_tax_ledger",
+    # Models
     "Currency",
-    "Action",
-    "Transaction",
-    "Deposit",
-    "Conversion",
 ]
