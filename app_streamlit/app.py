@@ -282,14 +282,15 @@ with tab_taxes:
 
                 _fig = go.Figure()
                 _fig.add_trace(go.Bar(
-                    name="Payable (before payment)",
+                    name="Payable",
                     x=_month_labels,
                     y=_chart["pre_tax_payable_state"],
                     marker_color="gray",
+                    opacity=0.6,
                     offsetgroup="payable",
                 ))
                 _fig.add_trace(go.Bar(
-                    name="Shield (before payment)",
+                    name="Shield",
                     x=_month_labels,
                     y=_chart["pre_tax_shield_state"],
                     marker_color="goldenrod",
@@ -376,7 +377,7 @@ with tab_taxes:
             else:
                 # --- Table ---
                 _div_display_cols = [
-                    c for c in ("date", "action_type", "paper_name", "symbol", "currency", "amount")
+                    c for c in ("date", "paper_name", "currency", "amount")
                     if c in dividend_tax_df.columns
                 ]
                 _div_display = df_dates_to_date_only(dividend_tax_df[_div_display_cols].copy())
