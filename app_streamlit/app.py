@@ -21,14 +21,16 @@ from trade_lens.analytics.ledger import (
     ledger_date_bounds,
     ledger_symbol_options,
 )
-from trade_lens.analytics.taxes import (
-    build_capital_gains_monthly_chart_df,
-    build_capital_gains_summary,
+from trade_lens.analytics.dividends import (
     build_dividend_deposit_ledger,
     build_dividend_tax_ledger,
     build_monthly_amount_series,
-    build_tax_ledger,
     dividend_deposit_year_options,
+)
+from trade_lens.analytics.taxes import (
+    build_capital_gains_monthly_chart_df,
+    build_capital_gains_summary,
+    build_tax_ledger,
     filter_tax_rows_by_year,
     tax_year_options,
 )
