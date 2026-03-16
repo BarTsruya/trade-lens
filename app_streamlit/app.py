@@ -21,7 +21,15 @@ from trade_lens.analytics.ledger import (
     ledger_date_bounds,
     ledger_symbol_options,
 )
-from trade_lens.analytics.taxes import build_tax_ledger
+from trade_lens.analytics.taxes import (
+    build_capital_gains_monthly_chart_df,
+    build_capital_gains_summary,
+    build_dividend_tax_ledger,
+    build_monthly_amount_series,
+    build_tax_ledger,
+    filter_tax_rows_by_year,
+    tax_year_options,
+)
 from trade_lens.brokers.ibi import RawActionType
 from trade_lens.pipeline.loader import count_unknown_action_rows, get_unknown_action_details, load_and_normalize_many
 
@@ -248,7 +256,7 @@ with tab_fees:
 # ---------------------------------------------------------------------------
 
 with tab_taxes:
-    st.subheader("Taxes")
+    st.subheader("Capital Gain Taxes")
 
     required_cols = {"action_type", "date", "delta_ils", "delta_usd", "paper_name", "quantity"}
     missing_cols = sorted(required_cols - set(ledger.columns))
@@ -256,148 +264,141 @@ with tab_taxes:
         st.warning("Cannot build taxes table because required columns are missing: " + ", ".join(missing_cols))
     else:
         taxes_table_df = build_tax_ledger(ledger)
-        if taxes_table_df.empty:
+        dividend_tax_all_df = build_dividend_tax_ledger(ledger)
+        _available_years = tax_year_options(ledger, taxes_table_df)
+
+        if not _available_years:
             st.info("No tax-related actions found.")
         else:
-            taxes_table_df["date"] = pd.to_datetime(taxes_table_df["date"], errors="coerce")
-
-            # --- Year filter ---
-            _available_years = sorted(taxes_table_df["date"].dt.year.dropna().unique().astype(int), reverse=True)
             selected_year = st.selectbox("Year", options=_available_years, index=0, key="taxes_year_filter")
 
-            # --- Filter to selected year and sort chronologically ---
-            taxes_y = taxes_table_df[taxes_table_df["date"].dt.year == selected_year].copy()
+            taxes_y = filter_tax_rows_by_year(taxes_table_df, selected_year)
             _sort_cols = ["date", "_display_idx"] if "_display_idx" in taxes_y.columns else ["date"]
             taxes_y = taxes_y.sort_values(_sort_cols, ascending=True, kind="mergesort").reset_index(drop=True)
 
-            # --- Pre-event snapshot columns (shift(1) gives state before each row) ---
-            taxes_y["pre_tax_payable_state"] = taxes_y["tax_payable_state"].shift(1).fillna(0.0)
-            taxes_y["pre_tax_shield_state"]  = taxes_y["tax_shield_state"].shift(1).fillna(0.0)
-            taxes_y["month"] = taxes_y["date"].dt.to_period("M").dt.to_timestamp()
+            if not taxes_y.empty:
+                _chart = build_capital_gains_monthly_chart_df(taxes_y, selected_year)
+                _month_labels = _chart["month"].dt.strftime("%b")
 
-            # --- Canonical 12-month axis ---
-            months_df = pd.DataFrame({
-                "month": pd.date_range(start=f"{selected_year}-01-01", periods=12, freq="MS")
-            })
+                _fig = go.Figure()
+                _fig.add_trace(go.Bar(
+                    name="Payable (before payment)",
+                    x=_month_labels,
+                    y=_chart["pre_tax_payable_state"],
+                    marker_color="gray",
+                    offsetgroup="payable",
+                ))
+                _fig.add_trace(go.Bar(
+                    name="Shield (before payment)",
+                    x=_month_labels,
+                    y=_chart["pre_tax_shield_state"],
+                    marker_color="goldenrod",
+                    offsetgroup="settlement",
+                ))
+                _fig.add_trace(go.Bar(
+                    name="Payment Amount",
+                    x=_month_labels,
+                    y=_chart["payment_amount"],
+                    marker_color="crimson",
+                    offsetgroup="settlement",
+                ))
+                _fig.add_trace(go.Bar(
+                    name="Credit Amount",
+                    x=_month_labels,
+                    y=_chart["credit_amount"],
+                    marker_color="seagreen",
+                    offsetgroup="credit",
+                ))
+                _fig.update_layout(
+                    barmode="relative",
+                    title=f"Taxes — Payable/Shield snapshot + Payments/Credits (Monthly) [{selected_year}]",
+                    xaxis_title="Month",
+                    yaxis_title="ILS (₪)",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                )
+                st.plotly_chart(_fig, width="stretch")
 
-            _pay_val  = RawActionType.TAX_PAYMENT.value
-            _cred_val = RawActionType.TAX_CREDIT.value
-            _pay_rows  = taxes_y[taxes_y["action_type"].astype("string") == _pay_val]
-            _cred_rows = taxes_y[taxes_y["action_type"].astype("string") == _cred_val]
+                # --- Summary ---
+                st.subheader("Summary")
+                _summary = build_capital_gains_summary(taxes_y)
+                _sum_col1, _sum_col2, _sum_col3, _sum_col4 = st.columns(4)
+                _sum_col1.metric("Total Tax Payables", f"₪{_summary['payable_sum']:,.2f}")
+                _sum_col2.metric("Total Tax Credits",  f"₪{_summary['credit_sum']:,.2f}")
+                _sum_col3.metric("Annual Tax (payments − credits)", f"₪{_summary['annual_tax']:,.2f}")
+                _sum_col4.metric("Remaining Tax Shield", f"₪{_summary['remaining_shield']:,.2f}")
 
-            # Snapshot: first payment event per month -> pre-event payable/shield
-            _pay_snap = (
-                _pay_rows.groupby("month", sort=True)
-                .first()[["pre_tax_payable_state", "pre_tax_shield_state"]]
-                .reset_index()
+                # --- Table (year-filtered, formatted) ---
+                taxes_display_df = taxes_y.drop(
+                    columns=["month"],
+                    errors="ignore",
+                ).copy()
+
+                for col in ("tax_shield_state", "tax_payable_state", "total_annual_tax"):
+                    taxes_display_df[col] = taxes_display_df[col].map(lambda v: format_signed_currency(v, "₪"))
+
+                taxes_display_df = order_table_newest_first_with_chrono_index(taxes_display_df, "date")
+                if "_display_idx" in taxes_display_df.columns:
+                    taxes_display_df = taxes_display_df.drop(columns=["_display_idx"])
+                annual_year_end_index = set(
+                    taxes_display_df.index[taxes_display_df["_annual_year_end"].fillna(False)].tolist()
+                )
+                taxes_display_df = taxes_display_df.drop(columns=["_annual_year_end", "amount_value"], errors="ignore")
+                taxes_display_df = df_dates_to_date_only(taxes_display_df)
+
+                def _style_tax_amount(row: pd.Series) -> list[str]:
+                    styles = [""] * len(row)
+                    amount_idx = list(row.index).index("amount") if "amount" in row.index else -1
+                    annual_idx = list(row.index).index("total_annual_tax") if "total_annual_tax" in row.index else -1
+                    if amount_idx >= 0:
+                        action_type = str(row.get("action_type", "") or "")
+                        if action_type == RawActionType.TAX_CREDIT.value:
+                            styles[amount_idx] = "color: #2e7d32; font-weight: 600;"
+                        elif action_type == RawActionType.TAX_PAYMENT.value:
+                            styles[amount_idx] = "color: #c62828; font-weight: 600;"
+                    if annual_idx >= 0 and row.name in annual_year_end_index:
+                        styles[annual_idx] = "font-weight: 700;"
+                    return styles
+
+                st.dataframe(taxes_display_df.style.apply(_style_tax_amount, axis=1), width="stretch", hide_index=False)
+            else:
+                st.info("No capital gain tax actions found.")
+
+            # ---------------------------------------------------------------------------
+            # Dividend Taxes section
+            # ---------------------------------------------------------------------------
+            st.divider()
+            st.subheader("Dividend Taxes")
+
+            dividend_tax_df = filter_tax_rows_by_year(dividend_tax_all_df, selected_year)
+
+            if dividend_tax_df.empty:
+                st.info("No dividend tax rows found for this year.")
+            else:
+                # --- Table ---
+                _div_display_cols = [
+                    c for c in ("date", "action_type", "paper_name", "symbol", "currency", "amount")
+                    if c in dividend_tax_df.columns
+                ]
+                _div_display = df_dates_to_date_only(dividend_tax_df[_div_display_cols].copy())
+                st.dataframe(_div_display, width="stretch", hide_index=True)
+
+            # --- Monthly bar chart: full 12-month axis ---
+            _div_months_merged = build_monthly_amount_series(
+                dividend_tax_df,
+                selected_year=selected_year,
+                amount_column="amount_value",
+                output_column="dividend_tax_amount",
             )
-            # Summed amounts per month
-            _pay_amt = (
-                _pay_rows.groupby("month", sort=True)["amount_value"]
-                .sum().reset_index()
-                .rename(columns={"amount_value": "payment_amount"})
+            _div_months_merged["month_label"] = _div_months_merged["month"].dt.strftime("%b")
+            _month_order = pd.date_range(start=f"{selected_year}-01-01", periods=12, freq="MS").strftime("%b").tolist()
+            _div_fig = px.bar(
+                _div_months_merged,
+                x="month_label",
+                y="dividend_tax_amount",
+                title=f"Monthly Dividend Tax [{selected_year}]",
+                labels={"month_label": "Month", "dividend_tax_amount": "Amount"},
+                category_orders={"month_label": _month_order},
             )
-            _cred_amt = (
-                _cred_rows.groupby("month", sort=True)["amount_value"]
-                .sum().reset_index()
-                .rename(columns={"amount_value": "credit_amount"})
-            )
-
-            _chart = (
-                months_df
-                .merge(_pay_snap, on="month", how="left")
-                .merge(_pay_amt,  on="month", how="left")
-                .merge(_cred_amt, on="month", how="left")
-                .fillna(0.0)
-            )
-            _month_labels = _chart["month"].dt.strftime("%b")
-
-            _fig = go.Figure()
-            _fig.add_trace(go.Bar(
-                name="Payable (before payment)",
-                x=_month_labels,
-                y=_chart["pre_tax_payable_state"],
-                marker_color="gray",
-                offsetgroup="payable",
-            ))
-            _fig.add_trace(go.Bar(
-                name="Shield (before payment)",
-                x=_month_labels,
-                y=_chart["pre_tax_shield_state"],
-                marker_color="goldenrod",
-                offsetgroup="settlement",
-            ))
-            _fig.add_trace(go.Bar(
-                name="Payment Amount",
-                x=_month_labels,
-                y=_chart["payment_amount"],
-                marker_color="crimson",
-                offsetgroup="settlement",
-            ))
-            _fig.add_trace(go.Bar(
-                name="Credit Amount",
-                x=_month_labels,
-                y=_chart["credit_amount"],
-                marker_color="seagreen",
-                offsetgroup="credit",
-            ))
-            _fig.update_layout(
-                barmode="relative",
-                title=f"Taxes — Payable/Shield snapshot + Payments/Credits (Monthly) [{selected_year}]",
-                xaxis_title="Month",
-                yaxis_title="ILS (₪)",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            )
-            st.plotly_chart(_fig, width="stretch")
-
-            # --- Summary ---
-            st.subheader("Summary")
-            _payable_rows = taxes_y[taxes_y["action_type"].astype("string") == RawActionType.TAX_PAYABLE.value]
-            _payable_sum  = float(_payable_rows["amount_value"].sum())
-            _payment_sum  = float(_pay_rows["amount_value"].sum())
-            _credit_sum   = float(_cred_rows["amount_value"].sum())
-            _annual_tax   = _payment_sum - _credit_sum
-            _remaining_shield = (
-                float(taxes_y["tax_shield_state"].dropna().iloc[-1])
-                if not taxes_y.empty and taxes_y["tax_shield_state"].notna().any()
-                else 0.0
-            )
-            _sum_col1, _sum_col2, _sum_col3, _sum_col4 = st.columns(4)
-            _sum_col1.metric("Total Tax Payables", f"₪{_payable_sum:,.2f}")
-            _sum_col2.metric("Total Tax Credits",  f"₪{_credit_sum:,.2f}")
-            _sum_col3.metric("Annual Tax (payments − credits)", f"₪{_annual_tax:,.2f}")
-            _sum_col4.metric("Remaining Tax Shield", f"₪{_remaining_shield:,.2f}")
-
-            # --- Table (year-filtered, formatted) ---
-            taxes_display_df = taxes_y.drop(
-                columns=["pre_tax_payable_state", "pre_tax_shield_state", "month"],
-                errors="ignore",
-            ).copy()
-
-            for col in ("tax_shield_state", "tax_payable_state", "total_annual_tax"):
-                taxes_display_df[col] = taxes_display_df[col].map(lambda v: format_signed_currency(v, "₪"))
-
-            taxes_display_df = order_table_newest_first_with_chrono_index(taxes_display_df, "date")
-            if "_display_idx" in taxes_display_df.columns:
-                taxes_display_df = taxes_display_df.drop(columns=["_display_idx"])
-            annual_year_end_index = set(
-                taxes_display_df.index[taxes_display_df["_annual_year_end"].fillna(False)].tolist()
-            )
-            taxes_display_df = taxes_display_df.drop(columns=["_annual_year_end", "amount_value"], errors="ignore")
-            taxes_display_df = df_dates_to_date_only(taxes_display_df)
-
-            def _style_tax_amount(row: pd.Series) -> list[str]:
-                styles = [""] * len(row)
-                amount_idx = list(row.index).index("amount") if "amount" in row.index else -1
-                annual_idx = list(row.index).index("total_annual_tax") if "total_annual_tax" in row.index else -1
-                if amount_idx >= 0:
-                    action_type = str(row.get("action_type", "") or "")
-                    if action_type == RawActionType.TAX_CREDIT.value:
-                        styles[amount_idx] = "color: #2e7d32; font-weight: 600;"
-                    elif action_type == RawActionType.TAX_PAYMENT.value:
-                        styles[amount_idx] = "color: #c62828; font-weight: 600;"
-                if annual_idx >= 0 and row.name in annual_year_end_index:
-                    styles[annual_idx] = "font-weight: 700;"
-                return styles
-
-            st.dataframe(taxes_display_df.style.apply(_style_tax_amount, axis=1), width="stretch", hide_index=False)
+            _div_fig.update_traces(marker_color="darkred")
+            _div_fig.update_layout(xaxis_title="Month", yaxis_title="Amount")
+            st.plotly_chart(_div_fig, width="stretch")
