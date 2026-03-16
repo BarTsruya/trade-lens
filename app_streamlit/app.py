@@ -282,50 +282,99 @@ with tab_taxes:
 
             if not taxes_y.empty:
                 _chart = build_capital_gains_monthly_chart_df(taxes_y, selected_year)
-                _month_labels = _chart["month"].dt.strftime("%b")
+                _month_labels = _chart["month"].dt.strftime("%b").tolist()
 
                 _show_shield = st.checkbox("Show Tax Shield", value=True)
+
+                # Manual bar positioning: zero-value bars take no space.
+                # Each month is centred at an integer position; active slots share 0.8 width evenly.
+                _n = len(_chart)
+                _centers = list(range(_n))
+                _slot_width_total = 0.8
+
+                _p_off, _p_w = [], []   # payable
+                _pay_off, _pay_w = [], []  # payment
+                _cr_off, _cr_w = [], []   # credit
+                _sh_off, _sh_w = [], []   # shield
+
+                for _i in range(_n):
+                    _slots = []
+                    if _chart["payable_amount"].iloc[_i] > 0:
+                        _slots.append("payable")
+                    if _chart["payment_amount"].iloc[_i] > 0:
+                        _slots.append("payment")
+                    if _chart["credit_amount"].iloc[_i] > 0:
+                        _slots.append("credit")
+                    if _show_shield and _chart["pre_settlement_shield"].iloc[_i] > 0:
+                        _slots.append("shield")
+
+                    _sw = _slot_width_total / len(_slots) if _slots else _slot_width_total
+                    _pos = _centers[_i] - _slot_width_total / 2
+                    _slot_pos: dict = {}
+                    for _s in _slots:
+                        _slot_pos[_s] = (_pos - _centers[_i], _sw)
+                        _pos += _sw
+
+                    def _get_slot(name: str) -> tuple:
+                        return _slot_pos.get(name, (0.0, 0.0))
+
+                    _o, _w = _get_slot("payable");  _p_off.append(_o);   _p_w.append(_w)
+                    _o, _w = _get_slot("payment");  _pay_off.append(_o); _pay_w.append(_w)
+                    _o, _w = _get_slot("credit");   _cr_off.append(_o);  _cr_w.append(_w)
+                    _o, _w = _get_slot("shield");   _sh_off.append(_o);  _sh_w.append(_w)
 
                 _fig = go.Figure()
                 _fig.add_trace(go.Bar(
                     name="Payable",
-                    x=_month_labels,
+                    x=_centers,
                     y=_chart["payable_amount"],
+                    offset=_p_off,
+                    width=_p_w,
                     marker_color="gray",
                     opacity=0.6,
-                    offsetgroup="payable",
                 ))
                 _fig.add_trace(go.Bar(
                     name="Payment",
-                    x=_month_labels,
+                    x=_centers,
                     y=_chart["payment_amount"],
+                    offset=_pay_off,
+                    width=_pay_w,
                     marker_color="crimson",
-                    offsetgroup="payment",
                 ))
                 _fig.add_trace(go.Bar(
                     name="Credit",
-                    x=_month_labels,
+                    x=_centers,
                     y=_chart["credit_amount"],
+                    offset=_cr_off,
+                    width=_cr_w,
                     marker_color="seagreen",
-                    offsetgroup="credit",
                 ))
                 if _show_shield:
                     _fig.add_trace(go.Bar(
                         name="Shield Used",
-                        x=_month_labels,
+                        x=_centers,
                         y=_chart["shield_used_bar"],
+                        base=[0.0] * _n,
+                        offset=_sh_off,
+                        width=_sh_w,
                         marker_color="darkorange",
-                        offsetgroup="shield",
                     ))
                     _fig.add_trace(go.Bar(
                         name="Shield Balance",
-                        x=_month_labels,
+                        x=_centers,
                         y=_chart["shield_balance_bar"],
+                        base=_chart["shield_used_bar"].tolist(),
+                        offset=_sh_off,
+                        width=_sh_w,
                         marker_color="goldenrod",
-                        offsetgroup="shield",
                     ))
                 _fig.update_layout(
-                    barmode="relative",
+                    barmode="overlay",
+                    xaxis=dict(
+                        tickmode="array",
+                        tickvals=_centers,
+                        ticktext=_month_labels,
+                    ),
                     title=f"Capital Gains Tax — Shield / Payable / Payment / Credit [{selected_year}]",
                     xaxis_title="Month",
                     yaxis_title="Amount (₪)",
