@@ -24,9 +24,11 @@ from trade_lens.analytics.ledger import (
 from trade_lens.analytics.taxes import (
     build_capital_gains_monthly_chart_df,
     build_capital_gains_summary,
+    build_dividend_deposit_ledger,
     build_dividend_tax_ledger,
     build_monthly_amount_series,
     build_tax_ledger,
+    dividend_deposit_year_options,
     filter_tax_rows_by_year,
     tax_year_options,
 )
@@ -88,7 +90,7 @@ else:
         f"Loaded {len(uploaded_files):,} file(s): {len(raw):,} raw rows and normalized to {len(ledger):,} ledger rows."
     )
 
-tab_ledger, tab_balance, tab_fees, tab_taxes = st.tabs(["Ledger", "Balance", "Fees", "Taxes"])
+tab_ledger, tab_balance, tab_fees, tab_taxes, tab_dividend = st.tabs(["Ledger", "Balance", "Fees", "Taxes", "Dividends"])
 
 # ---------------------------------------------------------------------------
 # Ledger tab
@@ -403,3 +405,54 @@ with tab_taxes:
             _div_fig.update_traces(marker_color="crimson", width=0.2)
             _div_fig.update_layout(xaxis_title="Month", yaxis_title="Amount ($)")
             st.plotly_chart(_div_fig, width="stretch")
+
+# ---------------------------------------------------------------------------
+# Dividends tab
+# ---------------------------------------------------------------------------
+
+with tab_dividend:
+    st.subheader("Dividends")
+
+    dividend_deposit_all_df = build_dividend_deposit_ledger(ledger)
+    _div_deposit_years = dividend_deposit_year_options(dividend_deposit_all_df)
+
+    if not _div_deposit_years:
+        st.info("No dividend deposit actions found.")
+    else:
+        selected_div_year = st.selectbox(
+            "Year", options=_div_deposit_years, index=0, key="dividend_year_filter"
+        )
+
+        dividend_deposit_y = filter_tax_rows_by_year(dividend_deposit_all_df, selected_div_year)
+
+        # --- Monthly bar chart ---
+        _dep_months = build_monthly_amount_series(
+            dividend_deposit_y,
+            selected_year=selected_div_year,
+            amount_column="amount_value",
+            output_column="dividend_amount",
+        )
+        _dep_months["month_label"] = _dep_months["month"].dt.strftime("%b")
+        _dep_month_order = pd.date_range(
+            start=f"{selected_div_year}-01-01", periods=12, freq="MS"
+        ).strftime("%b").tolist()
+        _dep_fig = px.bar(
+            _dep_months,
+            x="month_label",
+            y="dividend_amount",
+            title=f"Monthly Dividends [{selected_div_year}]",
+            labels={"month_label": "Month", "dividend_amount": "Amount"},
+            category_orders={"month_label": _dep_month_order},
+        )
+        _dep_fig.update_traces(marker_color="seagreen", width=0.2)
+        _dep_fig.update_layout(xaxis_title="Month", yaxis_title="Amount ($)")
+        st.plotly_chart(_dep_fig, width="stretch")
+
+        # --- Table ---
+        if dividend_deposit_y.empty:
+            st.info("No dividend deposit rows found for this year.")
+        else:
+            _dep_display = df_dates_to_date_only(dividend_deposit_y.copy())
+            _dep_display = _dep_display.drop(columns=["amount_value", "_display_idx"], errors="ignore")
+            _dep_display = order_table_newest_first_with_chrono_index(_dep_display, "date")
+            st.dataframe(_dep_display, width="stretch", hide_index=False)
