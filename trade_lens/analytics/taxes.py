@@ -162,29 +162,73 @@ def tax_year_options(ledger_df: pd.DataFrame, capital_tax_df: pd.DataFrame) -> l
 
 
 def build_capital_gains_monthly_chart_df(taxes_y: pd.DataFrame, selected_year: int) -> pd.DataFrame:
-    """Build monthly chart data for the capital-gains taxes stacked bar chart."""
+    """Build monthly chart data for the capital-gains taxes stacked bar chart.
+
+    Columns returned (all 12 months always present):
+      rolling_shield   – end-of-month tax shield state, forward-filled (yellow, always shown)
+      payable_amount   – sum of TAX_PAYABLE actions per month (gray)
+      shield_consumed  – portion of shield covering the payable at TAX_PAYMENT (orange, bottom of payment stack)
+      payment_amount   – sum of TAX_PAYMENT cash values per month (red, stacked on orange)
+      credit_amount    – sum of TAX_CREDIT values per month (green)
+    """
     months_df = pd.DataFrame({"month": pd.date_range(start=f"{selected_year}-01-01", periods=12, freq="MS")})
     if taxes_y.empty:
         return months_df.assign(
-            pre_tax_payable_state=0.0,
-            pre_tax_shield_state=0.0,
+            rolling_shield=0.0,
+            payable_amount=0.0,
+            shield_consumed=0.0,
             payment_amount=0.0,
             credit_amount=0.0,
         )
 
     df = taxes_y.copy()
     df["month"] = pd.to_datetime(df["date"], errors="coerce").dt.to_period("M").dt.to_timestamp()
-    df["pre_tax_payable_state"] = pd.to_numeric(df["tax_payable_state"], errors="coerce").shift(1).fillna(0.0)
+    # Snapshot values on the row before each event (used to capture state consumed at payment).
     df["pre_tax_shield_state"] = pd.to_numeric(df["tax_shield_state"], errors="coerce").shift(1).fillna(0.0)
+    df["pre_tax_payable_state"] = pd.to_numeric(df["tax_payable_state"], errors="coerce").shift(1).fillna(0.0)
 
-    pay_rows = df.loc[df["action_type"].astype("string") == RawActionType.TAX_PAYMENT.value]
-    cred_rows = df.loc[df["action_type"].astype("string") == RawActionType.TAX_CREDIT.value]
+    action = df["action_type"].astype("string")
+    payable_rows = df.loc[action == RawActionType.TAX_PAYABLE.value]
+    pay_rows = df.loc[action == RawActionType.TAX_PAYMENT.value]
+    cred_rows = df.loc[action == RawActionType.TAX_CREDIT.value]
 
-    pay_snap = (
-        pay_rows.groupby("month", sort=True)
-        .first()[["pre_tax_payable_state", "pre_tax_shield_state"]]
+    # rolling_shield: last known shield state per month, forward-filled up to the
+    # last month with any event; zeroed afterwards so no phantom bars appear.
+    last_event_month = df["month"].max()
+    shield_monthly = (
+        df.groupby("month", sort=True)["tax_shield_state"]
+        .last()
+        .reset_index()
+        .rename(columns={"tax_shield_state": "rolling_shield"})
+    )
+    rolling = months_df.merge(shield_monthly, on="month", how="left")
+    rolling["rolling_shield"] = rolling["rolling_shield"].ffill().fillna(0.0)
+    rolling.loc[rolling["month"] > last_event_month, "rolling_shield"] = 0.0
+
+    payable_amt = (
+        payable_rows.groupby("month", sort=True)["amount_value"]
+        .sum()
+        .reset_index()
+        .rename(columns={"amount_value": "payable_amount"})
+    )
+
+    # shield_consumed = portion of the shield that covered the payable at payment time.
+    # Capped at pre_payable_state so that when the shield exceeds the payable (fully covered),
+    # the orange bar matches the payable amount rather than the entire shield.
+    shield_snap = (
+        pay_rows.groupby("month", sort=True)["pre_tax_shield_state"]
+        .first()
         .reset_index()
     )
+    payable_snap = (
+        pay_rows.groupby("month", sort=True)["pre_tax_payable_state"]
+        .first()
+        .reset_index()
+    )
+    shield_consumed = shield_snap.merge(payable_snap, on="month")
+    shield_consumed["shield_consumed"] = shield_consumed[["pre_tax_shield_state", "pre_tax_payable_state"]].min(axis=1)
+    shield_consumed = shield_consumed[["month", "shield_consumed"]]
+
     pay_amt = (
         pay_rows.groupby("month", sort=True)["amount_value"]
         .sum()
@@ -199,7 +243,9 @@ def build_capital_gains_monthly_chart_df(taxes_y: pd.DataFrame, selected_year: i
     )
 
     return (
-        months_df.merge(pay_snap, on="month", how="left")
+        rolling
+        .merge(payable_amt, on="month", how="left")
+        .merge(shield_consumed, on="month", how="left")
         .merge(pay_amt, on="month", how="left")
         .merge(cred_amt, on="month", how="left")
         .fillna(0.0)

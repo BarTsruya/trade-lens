@@ -288,27 +288,34 @@ with tab_taxes:
                 _fig.add_trace(go.Bar(
                     name="Payable",
                     x=_month_labels,
-                    y=_chart["pre_tax_payable_state"],
+                    y=_chart["payable_amount"],
                     marker_color="gray",
                     opacity=0.6,
                     offsetgroup="payable",
                 ))
                 _fig.add_trace(go.Bar(
-                    name="Shield",
+                    name="Shield Balance",
                     x=_month_labels,
-                    y=_chart["pre_tax_shield_state"],
+                    y=_chart["rolling_shield"],
                     marker_color="goldenrod",
+                    offsetgroup="balance",
+                ))
+                _fig.add_trace(go.Bar(
+                    name="Shield Used",
+                    x=_month_labels,
+                    y=_chart["shield_consumed"],
+                    marker_color="darkorange",
                     offsetgroup="settlement",
                 ))
                 _fig.add_trace(go.Bar(
-                    name="Payment Amount",
+                    name="Payment",
                     x=_month_labels,
                     y=_chart["payment_amount"],
                     marker_color="crimson",
                     offsetgroup="settlement",
                 ))
                 _fig.add_trace(go.Bar(
-                    name="Credit Amount",
+                    name="Credit",
                     x=_month_labels,
                     y=_chart["credit_amount"],
                     marker_color="seagreen",
@@ -316,7 +323,7 @@ with tab_taxes:
                 ))
                 _fig.update_layout(
                     barmode="relative",
-                    title=f"Taxes — Payable/Shield snapshot + Payments/Credits (Monthly) [{selected_year}]",
+                    title=f"Capital Gains Tax — Shield / Payable / Payment / Credit [{selected_year}]",
                     xaxis_title="Month",
                     yaxis_title="Amount (₪)",
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
@@ -379,6 +386,27 @@ with tab_taxes:
             if dividend_tax_df.empty:
                 st.info("No dividend tax rows found for this year.")
             else:
+                # --- Monthly bar chart: full 12-month axis ---
+                _div_months_merged = build_monthly_amount_series(
+                    dividend_tax_df,
+                    selected_year=selected_year,
+                    amount_column="amount_value",
+                    output_column="dividend_tax_amount",
+                )
+                _div_months_merged["month_label"] = _div_months_merged["month"].dt.strftime("%b")
+                _month_order = pd.date_range(start=f"{selected_year}-01-01", periods=12, freq="MS").strftime("%b").tolist()
+                _div_fig = px.bar(
+                    _div_months_merged,
+                    x="month_label",
+                    y="dividend_tax_amount",
+                    title=f"Monthly Dividend Tax [{selected_year}]",
+                    labels={"month_label": "Month", "dividend_tax_amount": "Amount"},
+                    category_orders={"month_label": _month_order},
+                )
+                _div_fig.update_traces(marker_color="crimson", width=0.2)
+                _div_fig.update_layout(xaxis_title="Month", yaxis_title="Amount ($)")
+                st.plotly_chart(_div_fig, width="stretch")
+
                 # --- Table ---
                 _div_display_cols = [
                     c for c in ("date", "paper_name", "currency", "amount")
@@ -386,27 +414,6 @@ with tab_taxes:
                 ]
                 _div_display = df_dates_to_date_only(dividend_tax_df[_div_display_cols].copy())
                 st.dataframe(_div_display, width="stretch", hide_index=True)
-
-            # --- Monthly bar chart: full 12-month axis ---
-            _div_months_merged = build_monthly_amount_series(
-                dividend_tax_df,
-                selected_year=selected_year,
-                amount_column="amount_value",
-                output_column="dividend_tax_amount",
-            )
-            _div_months_merged["month_label"] = _div_months_merged["month"].dt.strftime("%b")
-            _month_order = pd.date_range(start=f"{selected_year}-01-01", periods=12, freq="MS").strftime("%b").tolist()
-            _div_fig = px.bar(
-                _div_months_merged,
-                x="month_label",
-                y="dividend_tax_amount",
-                title=f"Monthly Dividend Tax [{selected_year}]",
-                labels={"month_label": "Month", "dividend_tax_amount": "Amount"},
-                category_orders={"month_label": _month_order},
-            )
-            _div_fig.update_traces(marker_color="crimson", width=0.2)
-            _div_fig.update_layout(xaxis_title="Month", yaxis_title="Amount ($)")
-            st.plotly_chart(_div_fig, width="stretch")
 
 # ---------------------------------------------------------------------------
 # Dividends tab
