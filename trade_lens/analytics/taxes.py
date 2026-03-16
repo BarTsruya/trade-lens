@@ -165,16 +165,22 @@ def build_capital_gains_monthly_chart_df(taxes_y: pd.DataFrame, selected_year: i
     """Build monthly chart data for the capital-gains taxes stacked bar chart.
 
     Columns returned (all 12 months always present):
-      rolling_shield   – end-of-month tax shield state, forward-filled (yellow, always shown)
-      payable_amount   – sum of TAX_PAYABLE actions per month (gray)
-      shield_consumed  – portion of shield covering the payable at TAX_PAYMENT (orange, bottom of payment stack)
-      payment_amount   – sum of TAX_PAYMENT cash values per month (red, stacked on orange)
-      credit_amount    – sum of TAX_CREDIT values per month (green)
+      rolling_shield         – end-of-month tax shield state, forward-filled
+      pre_settlement_shield  – shield value just before TAX_PAYMENT or TAX_CREDIT; falls back to rolling_shield
+      shield_used_bar        – portion of shield consumed: min(pre_settlement_shield, payable + credit) (orange)
+      shield_balance_bar     – portion of shield remaining: max(0, pre_settlement_shield - payable - credit) (yellow)
+      payable_amount         – sum of TAX_PAYABLE actions per month (gray)
+      shield_consumed        – portion of shield covering the payable at TAX_PAYMENT (used to derive shield_used)
+      payment_amount         – sum of TAX_PAYMENT cash values per month (red)
+      credit_amount          – sum of TAX_CREDIT values per month (green)
     """
     months_df = pd.DataFrame({"month": pd.date_range(start=f"{selected_year}-01-01", periods=12, freq="MS")})
     if taxes_y.empty:
         return months_df.assign(
             rolling_shield=0.0,
+            pre_settlement_shield=0.0,
+            shield_used_bar=0.0,
+            shield_balance_bar=0.0,
             payable_amount=0.0,
             shield_consumed=0.0,
             payment_amount=0.0,
@@ -229,6 +235,11 @@ def build_capital_gains_monthly_chart_df(taxes_y: pd.DataFrame, selected_year: i
     shield_consumed["shield_consumed"] = shield_consumed[["pre_tax_shield_state", "pre_tax_payable_state"]].min(axis=1)
     shield_consumed = shield_consumed[["month", "shield_consumed"]]
 
+    # Cumulative shield used: running total of shield consumed at payment events.
+    _shield_used_tmp = months_df.merge(shield_consumed, on="month", how="left")
+    _shield_used_tmp["shield_used"] = _shield_used_tmp["shield_consumed"].fillna(0.0).cumsum()
+    shield_used = _shield_used_tmp[["month", "shield_used"]]
+
     pay_amt = (
         pay_rows.groupby("month", sort=True)["amount_value"]
         .sum()
@@ -242,14 +253,44 @@ def build_capital_gains_monthly_chart_df(taxes_y: pd.DataFrame, selected_year: i
         .rename(columns={"amount_value": "credit_amount"})
     )
 
-    return (
+    # pre_settlement_shield: shield value just before a TAX_PAYMENT or TAX_CREDIT executes.
+    # Falls back to rolling_shield for months without such events.
+    _pre_pay_shield = (
+        pay_rows.groupby("month", sort=True)["pre_tax_shield_state"]
+        .first()
+        .reset_index()
+        .rename(columns={"pre_tax_shield_state": "_pre_shield"})
+    )
+    _pre_cred_shield = (
+        cred_rows.groupby("month", sort=True)["pre_tax_shield_state"]
+        .first()
+        .reset_index()
+        .rename(columns={"pre_tax_shield_state": "_pre_shield"})
+    )
+    _pre_both = (
+        pd.concat([_pre_pay_shield, _pre_cred_shield], ignore_index=True)
+        .groupby("month", sort=True)["_pre_shield"]
+        .max()
+        .reset_index()
+        .rename(columns={"_pre_shield": "pre_settlement_shield"})
+    )
+
+    result = (
         rolling
         .merge(payable_amt, on="month", how="left")
         .merge(shield_consumed, on="month", how="left")
+        .merge(shield_used, on="month", how="left")
+        .merge(_pre_both, on="month", how="left")
         .merge(pay_amt, on="month", how="left")
         .merge(cred_amt, on="month", how="left")
-        .fillna(0.0)
     )
+    result["pre_settlement_shield"] = result["pre_settlement_shield"].fillna(result["rolling_shield"])
+    result = result.fillna(0.0)
+    _consumed = result["payable_amount"] + result["credit_amount"]
+    _excess = (result["pre_settlement_shield"] - _consumed).clip(lower=0.0)
+    result["shield_balance_bar"] = _excess
+    result["shield_used_bar"] = result["pre_settlement_shield"] - _excess
+    return result
 
 
 def build_capital_gains_summary(taxes_y: pd.DataFrame) -> dict[str, float]:

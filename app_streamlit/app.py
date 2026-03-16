@@ -294,25 +294,25 @@ with tab_taxes:
                     offsetgroup="payable",
                 ))
                 _fig.add_trace(go.Bar(
-                    name="Shield Balance",
-                    x=_month_labels,
-                    y=_chart["rolling_shield"],
-                    marker_color="goldenrod",
-                    offsetgroup="balance",
-                ))
-                _fig.add_trace(go.Bar(
                     name="Shield Used",
                     x=_month_labels,
-                    y=_chart["shield_consumed"],
+                    y=_chart["shield_used_bar"],
                     marker_color="darkorange",
-                    offsetgroup="settlement",
+                    offsetgroup="shield",
+                ))
+                _fig.add_trace(go.Bar(
+                    name="Shield Balance",
+                    x=_month_labels,
+                    y=_chart["shield_balance_bar"],
+                    marker_color="goldenrod",
+                    offsetgroup="shield",
                 ))
                 _fig.add_trace(go.Bar(
                     name="Payment",
                     x=_month_labels,
                     y=_chart["payment_amount"],
                     marker_color="crimson",
-                    offsetgroup="settlement",
+                    offsetgroup="payment",
                 ))
                 _fig.add_trace(go.Bar(
                     name="Credit",
