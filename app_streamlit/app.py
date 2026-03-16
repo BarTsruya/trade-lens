@@ -284,6 +284,8 @@ with tab_taxes:
                 _chart = build_capital_gains_monthly_chart_df(taxes_y, selected_year)
                 _month_labels = _chart["month"].dt.strftime("%b")
 
+                _show_shield = st.checkbox("Show Tax Shield", value=True)
+
                 _fig = go.Figure()
                 _fig.add_trace(go.Bar(
                     name="Payable",
@@ -292,20 +294,6 @@ with tab_taxes:
                     marker_color="gray",
                     opacity=0.6,
                     offsetgroup="payable",
-                ))
-                _fig.add_trace(go.Bar(
-                    name="Shield Used",
-                    x=_month_labels,
-                    y=_chart["shield_used_bar"],
-                    marker_color="darkorange",
-                    offsetgroup="shield",
-                ))
-                _fig.add_trace(go.Bar(
-                    name="Shield Balance",
-                    x=_month_labels,
-                    y=_chart["shield_balance_bar"],
-                    marker_color="goldenrod",
-                    offsetgroup="shield",
                 ))
                 _fig.add_trace(go.Bar(
                     name="Payment",
@@ -321,6 +309,21 @@ with tab_taxes:
                     marker_color="seagreen",
                     offsetgroup="credit",
                 ))
+                if _show_shield:
+                    _fig.add_trace(go.Bar(
+                        name="Shield Used",
+                        x=_month_labels,
+                        y=_chart["shield_used_bar"],
+                        marker_color="darkorange",
+                        offsetgroup="shield",
+                    ))
+                    _fig.add_trace(go.Bar(
+                        name="Shield Balance",
+                        x=_month_labels,
+                        y=_chart["shield_balance_bar"],
+                        marker_color="goldenrod",
+                        offsetgroup="shield",
+                    ))
                 _fig.update_layout(
                     barmode="relative",
                     title=f"Capital Gains Tax — Shield / Payable / Payment / Credit [{selected_year}]",
