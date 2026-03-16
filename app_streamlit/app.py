@@ -313,7 +313,7 @@ with tab_taxes:
                     barmode="relative",
                     title=f"Taxes — Payable/Shield snapshot + Payments/Credits (Monthly) [{selected_year}]",
                     xaxis_title="Month",
-                    yaxis_title="ILS (₪)",
+                    yaxis_title="Amount (₪)",
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                 )
                 st.plotly_chart(_fig, width="stretch")
@@ -399,6 +399,6 @@ with tab_taxes:
                 labels={"month_label": "Month", "dividend_tax_amount": "Amount"},
                 category_orders={"month_label": _month_order},
             )
-            _div_fig.update_traces(marker_color="darkred")
-            _div_fig.update_layout(xaxis_title="Month", yaxis_title="Amount")
+            _div_fig.update_traces(marker_color="crimson", width=0.2)
+            _div_fig.update_layout(xaxis_title="Month", yaxis_title="Amount ($)")
             st.plotly_chart(_div_fig, width="stretch")
