@@ -375,7 +375,7 @@ with tab_taxes:
                         tickvals=_centers,
                         ticktext=_month_labels,
                     ),
-                    title=f"Capital Gains Tax — Shield / Payable / Payment / Credit [{selected_year}]",
+                    title=f"Capital Gains Tax — Monthly Breakdown [{selected_year}]",
                     xaxis_title="Month",
                     yaxis_title="Amount (₪)",
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
@@ -465,6 +465,8 @@ with tab_taxes:
                     if c in dividend_tax_df.columns
                 ]
                 _div_display = df_dates_to_date_only(dividend_tax_df[_div_display_cols].copy())
+                if "paper_name" in _div_display.columns:
+                    _div_display["paper_name"] = _div_display["paper_name"].str.split("/").str[-1].str.strip().str.split().str[0]
                 st.dataframe(_div_display, width="stretch", hide_index=True)
 
 # ---------------------------------------------------------------------------
@@ -516,4 +518,6 @@ with tab_dividend:
             _dep_display = df_dates_to_date_only(dividend_deposit_y.copy())
             _dep_display = _dep_display.drop(columns=["amount_value", "_display_idx"], errors="ignore")
             _dep_display = order_table_newest_first_with_chrono_index(_dep_display, "date")
+            if "paper_name" in _dep_display.columns:
+                _dep_display["paper_name"] = _dep_display["paper_name"].str.split("/").str[-1].str.strip().str.split().str[0]
             st.dataframe(_dep_display, width="stretch", hide_index=False)
