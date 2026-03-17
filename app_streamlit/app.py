@@ -459,7 +459,26 @@ with tab_taxes:
                 _div_fig.update_layout(xaxis_title="Month", yaxis_title="Amount ($)")
                 st.plotly_chart(_div_fig, width="stretch")
 
+                # --- Summary ---
+                _div_tax_ticker = dividend_tax_df.copy()
+                _div_tax_ticker["ticker"] = _div_tax_ticker["paper_name"].str.split("/").str[-1].str.strip().str.split().str[0]
+                _div_tax_totals = _div_tax_ticker.groupby("amount_currency")["amount_value"].sum()
+                _div_tax_by_ticker = (
+                    _div_tax_ticker.groupby(["ticker", "amount_currency"])["amount_value"]
+                    .sum()
+                    .reset_index()
+                    .sort_values("amount_value", ascending=False)
+                )
+                _div_tax_by_ticker["total"] = _div_tax_by_ticker["amount_currency"] + _div_tax_by_ticker["amount_value"].map(lambda v: f"{v:,.2f}")
+                _div_tax_summary = _div_tax_by_ticker[["ticker", "total"]].rename(columns={"ticker": "Ticker", "total": "Tax Paid"})
+
+                _div_tax_metric_cols = st.columns(len(_div_tax_totals))
+                for _col, (_cur, _val) in zip(_div_tax_metric_cols, _div_tax_totals.items()):
+                    _col.metric(f"Total Dividend Tax ({_cur})", f"{_cur}{_val:,.2f}")
+                st.dataframe(_div_tax_summary, hide_index=True)
+
                 # --- Table ---
+                st.markdown("**Transactions**")
                 _div_display_cols = [
                     c for c in ("date", "paper_name", "currency", "amount")
                     if c in dividend_tax_df.columns
@@ -467,6 +486,7 @@ with tab_taxes:
                 _div_display = df_dates_to_date_only(dividend_tax_df[_div_display_cols].copy())
                 if "paper_name" in _div_display.columns:
                     _div_display["paper_name"] = _div_display["paper_name"].str.split("/").str[-1].str.strip().str.split().str[0]
+                    _div_display = _div_display.rename(columns={"paper_name": "Ticker"})
                 st.dataframe(_div_display, width="stretch", hide_index=True)
 
 # ---------------------------------------------------------------------------
@@ -511,13 +531,37 @@ with tab_dividend:
         _dep_fig.update_layout(xaxis_title="Month", yaxis_title="Amount ($)")
         st.plotly_chart(_dep_fig, width="stretch")
 
+        # --- Summary ---
+        if not dividend_deposit_y.empty:
+            _dep_ticker = dividend_deposit_y.copy()
+            _dep_ticker["ticker"] = _dep_ticker["paper_name"].str.split("/").str[-1].str.strip().str.split().str[0]
+            _dep_totals = _dep_ticker.groupby("amount_currency")["amount_value"].sum()
+            _dep_by_ticker = (
+                _dep_ticker.groupby(["ticker", "amount_currency"])["amount_value"]
+                .sum()
+                .reset_index()
+                .sort_values("amount_value", ascending=False)
+            )
+            _dep_by_ticker["total"] = _dep_by_ticker["amount_currency"] + _dep_by_ticker["amount_value"].map(lambda v: f"{v:,.2f}")
+            _dep_summary = _dep_by_ticker[["ticker", "total"]].rename(columns={"ticker": "Ticker", "total": "Dividends Received"})
+
+            _dep_metric_cols = st.columns(len(_dep_totals))
+            for _col, (_cur, _val) in zip(_dep_metric_cols, _dep_totals.items()):
+                _col.metric(f"Total Dividends ({_cur})", f"{_cur}{_val:,.2f}")
+            st.dataframe(_dep_summary, hide_index=True)
+
         # --- Table ---
         if dividend_deposit_y.empty:
             st.info("No dividend deposit rows found for this year.")
         else:
-            _dep_display = df_dates_to_date_only(dividend_deposit_y.copy())
-            _dep_display = _dep_display.drop(columns=["amount_value", "_display_idx"], errors="ignore")
+            st.markdown("**Transactions**")
+            _dep_display_cols = [
+                c for c in ("date", "paper_name", "currency", "amount")
+                if c in dividend_deposit_y.columns
+            ]
+            _dep_display = df_dates_to_date_only(dividend_deposit_y[_dep_display_cols].copy())
             _dep_display = order_table_newest_first_with_chrono_index(_dep_display, "date")
             if "paper_name" in _dep_display.columns:
                 _dep_display["paper_name"] = _dep_display["paper_name"].str.split("/").str[-1].str.strip().str.split().str[0]
-            st.dataframe(_dep_display, width="stretch", hide_index=False)
+                _dep_display = _dep_display.rename(columns={"paper_name": "Ticker"})
+            st.dataframe(_dep_display, width="stretch", hide_index=True)
