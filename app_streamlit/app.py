@@ -300,9 +300,10 @@ with tab_fees:
             st.dataframe(_trade_by_ticker[["symbol", "Amount"]].rename(columns={"symbol": "Ticker"}), hide_index=True)
 
             st.markdown("**Transactions**")
-            _trade_display = df_dates_to_date_only(trading_fees_y[["date", "symbol", "amount"]].copy())
+            _trade_cols = [c for c in ("date", "action_type", "symbol", "amount") if c in trading_fees_y.columns]
+            _trade_display = df_dates_to_date_only(trading_fees_y[_trade_cols].copy())
             _trade_display = order_table_newest_first_with_chrono_index(_trade_display, "date")
-            _trade_display = _trade_display.rename(columns={"symbol": "Ticker", "amount": "Amount"})
+            _trade_display = _trade_display.rename(columns={"action_type": "Action", "symbol": "Ticker", "amount": "Amount"})
             st.dataframe(_trade_display, width="stretch", hide_index=True)
 
     st.divider()
