@@ -6,6 +6,7 @@ from typing import Tuple
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import streamlit as st
 
 from display_utils import (
@@ -239,35 +240,37 @@ with tab_balance:
                 return m.group() if m else ""
             _fx_df["Rate"] = _fx_df["paper_name"].apply(_extract_rate)
             _fx_df["rate_value"] = _fx_df["Rate"].str.extract(r"([\d.]+)$").astype(float, errors="ignore")
+            _fx_chart_df = _fx_df[["date", "rate_value", "delta_ils", "delta_usd"]].copy()
+            _fx_chart_df["rate_value"] = pd.to_numeric(_fx_chart_df["rate_value"], errors="coerce")
+            _fx_chart_df["delta_ils"] = pd.to_numeric(_fx_chart_df["delta_ils"], errors="coerce").abs()
+            _fx_chart_df["delta_usd"] = pd.to_numeric(_fx_chart_df["delta_usd"], errors="coerce").abs()
+            _fx_chart_df = _fx_chart_df.dropna(subset=["rate_value", "delta_ils"]).sort_values("date")
+            if not _fx_chart_df.empty:
+                _fx_fig = make_subplots(specs=[[{"secondary_y": True}]])
+                _fx_fig.add_trace(
+                    go.Bar(x=_fx_chart_df["date"], y=_fx_chart_df["delta_ils"], name="ILS Converted", marker_color="steelblue", opacity=0.6),
+                    secondary_y=False,
+                )
+                _fx_fig.add_trace(
+                    go.Scatter(x=_fx_chart_df["date"], y=_fx_chart_df["rate_value"], name="Rate (USD/ILS)", mode="lines+markers", marker_color="darkorange"),
+                    secondary_y=True,
+                )
+                _fx_fig.update_layout(title="ILS Converted & Conversion Rate Over Time", xaxis_title="Date")
+                _fx_fig.update_yaxes(title_text="ILS Amount (₪)", secondary_y=False)
+                _fx_fig.update_yaxes(title_text="Rate (USD/ILS)", secondary_y=True)
+                st.plotly_chart(_fx_fig, width="stretch")
+
+                _fx_avg_rate = _fx_chart_df["rate_value"].mean()
+                _fx_total_ils = _fx_chart_df["delta_ils"].sum()
+                _fx_total_usd = _fx_chart_df["delta_usd"].sum()
+                _fx_sum_col1, _fx_sum_col2, _fx_sum_col3 = st.columns(3)
+                _fx_sum_col1.metric("Average Rate (USD/ILS)", f"{_fx_avg_rate:,.4f}")
+                _fx_sum_col2.metric("Total ILS Converted", f"₪{_fx_total_ils:,.2f}")
+                _fx_sum_col3.metric("Total USD Produced", f"${_fx_total_usd:,.2f}")
+
             _fx_display = _fx_df[["date", "USD Amount", "ILS Amount", "Rate"]].copy()
             _fx_display = order_table_newest_first_with_chrono_index(_fx_display, "date")
             st.dataframe(_fx_display, width="stretch", hide_index=True)
-
-            _fx_rate_df = _fx_df[["date", "rate_value"]].copy()
-            _fx_rate_df["rate_value"] = pd.to_numeric(_fx_rate_df["rate_value"], errors="coerce")
-            _fx_rate_df = _fx_rate_df.dropna(subset=["rate_value"]).sort_values("date")
-            if not _fx_rate_df.empty:
-                st.plotly_chart(
-                    px.line(
-                        _fx_rate_df, x="date", y="rate_value",
-                        title="USD/ILS Conversion Rate Over Time",
-                        labels={"date": "Date", "rate_value": "Rate (USD/ILS)"},
-                    ),
-                    width="stretch",
-                )
-
-            _fx_ils_df = _fx_df[["date", "delta_ils"]].copy()
-            _fx_ils_df["delta_ils"] = pd.to_numeric(_fx_ils_df["delta_ils"], errors="coerce").abs()
-            _fx_ils_df = _fx_ils_df.dropna(subset=["delta_ils"]).sort_values("date")
-            if not _fx_ils_df.empty:
-                st.plotly_chart(
-                    px.bar(
-                        _fx_ils_df, x="date", y="delta_ils",
-                        title="ILS Converted Over Time",
-                        labels={"date": "Date", "delta_ils": "ILS Amount (₪)"},
-                    ),
-                    width="stretch",
-                )
 
 # ---------------------------------------------------------------------------
 # Fees tab
