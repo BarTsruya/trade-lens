@@ -221,18 +221,53 @@ with tab_balance:
         balance_table_df = order_table_newest_first_with_chrono_index(balance_table_df, "date")
         if "_display_idx" in balance_table_df.columns:
             balance_table_df = balance_table_df.drop(columns=["_display_idx"])
+        balance_table_df = balance_table_df.drop(columns=["action_type"], errors="ignore")
         st.dataframe(balance_table_df, width="stretch", hide_index=False)
 
-        balance_long = balance_display_df.melt(
-            id_vars=["date"], value_vars=["usd_balance", "ils_balance"],
-            var_name="balance_type", value_name="balance",
-        )
-        st.plotly_chart(
-            px.line(balance_long, x="date", y="balance", color="balance_type",
-                    title="Running USD and ILS Balances",
-                    labels={"date": "Day", "balance": "Balance", "balance_type": "Series"}),
-            width="stretch",
-        )
+        st.divider()
+        st.subheader("Foreign Exchange Conversions")
+        _fx_df = ledger.loc[ledger["action_type"] == RawActionType.FX_CONVERSION.value].copy()
+        if _fx_df.empty:
+            st.info("No foreign exchange conversion rows found.")
+        else:
+            import re as _re
+            _fx_df["date"] = pd.to_datetime(_fx_df["date"], errors="coerce").dt.date
+            _fx_df["ILS Amount"] = pd.to_numeric(_fx_df.get("delta_ils"), errors="coerce").fillna(0.0).map(lambda v: format_signed_currency(v, "₪"))
+            _fx_df["USD Amount"] = pd.to_numeric(_fx_df.get("delta_usd"), errors="coerce").fillna(0.0).map(lambda v: format_signed_currency(v, "$"))
+            def _extract_rate(pn: str) -> str:
+                m = _re.search(r"[A-Z]+/[A-Z]+\s+[\d.]+", str(pn) if pn else "")
+                return m.group() if m else ""
+            _fx_df["Rate"] = _fx_df["paper_name"].apply(_extract_rate)
+            _fx_df["rate_value"] = _fx_df["Rate"].str.extract(r"([\d.]+)$").astype(float, errors="ignore")
+            _fx_display = _fx_df[["date", "USD Amount", "ILS Amount", "Rate"]].copy()
+            _fx_display = order_table_newest_first_with_chrono_index(_fx_display, "date")
+            st.dataframe(_fx_display, width="stretch", hide_index=True)
+
+            _fx_rate_df = _fx_df[["date", "rate_value"]].copy()
+            _fx_rate_df["rate_value"] = pd.to_numeric(_fx_rate_df["rate_value"], errors="coerce")
+            _fx_rate_df = _fx_rate_df.dropna(subset=["rate_value"]).sort_values("date")
+            if not _fx_rate_df.empty:
+                st.plotly_chart(
+                    px.line(
+                        _fx_rate_df, x="date", y="rate_value",
+                        title="USD/ILS Conversion Rate Over Time",
+                        labels={"date": "Date", "rate_value": "Rate (USD/ILS)"},
+                    ),
+                    width="stretch",
+                )
+
+            _fx_ils_df = _fx_df[["date", "delta_ils"]].copy()
+            _fx_ils_df["delta_ils"] = pd.to_numeric(_fx_ils_df["delta_ils"], errors="coerce").abs()
+            _fx_ils_df = _fx_ils_df.dropna(subset=["delta_ils"]).sort_values("date")
+            if not _fx_ils_df.empty:
+                st.plotly_chart(
+                    px.bar(
+                        _fx_ils_df, x="date", y="delta_ils",
+                        title="ILS Converted Over Time",
+                        labels={"date": "Date", "delta_ils": "ILS Amount (₪)"},
+                    ),
+                    width="stretch",
+                )
 
 # ---------------------------------------------------------------------------
 # Fees tab
