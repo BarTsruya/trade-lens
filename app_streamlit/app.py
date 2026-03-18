@@ -14,7 +14,7 @@ from display_utils import (
     order_table_newest_first_with_chrono_index,
 )
 from trade_lens.analytics.balance import balance_timeline_actions
-from trade_lens.analytics.cashflow import (
+from trade_lens.analytics.fees import (
     build_maintenance_fees_ledger,
     build_trading_fees_ledger,
     monthly_fees_breakdown,
@@ -290,23 +290,19 @@ with tab_fees:
             _trade_total = trading_fees_y["amount_value"].sum()
             st.metric("Total Trading Fees", f"${_trade_total:,.2f}")
 
-            _trade_ticker_col = trading_fees_y["paper_name"].str.split("/").str[-1].str.strip().str.split().str[0]
             _trade_by_ticker = (
-                trading_fees_y.assign(Ticker=_trade_ticker_col)
-                .groupby("Ticker")["amount_value"]
+                trading_fees_y.groupby("symbol")["amount_value"]
                 .sum()
                 .reset_index()
                 .sort_values("amount_value", ascending=False)
             )
             _trade_by_ticker["Amount"] = "$" + _trade_by_ticker["amount_value"].map(lambda v: f"{v:,.2f}")
-            st.dataframe(_trade_by_ticker[["Ticker", "Amount"]], hide_index=True)
+            st.dataframe(_trade_by_ticker[["symbol", "Amount"]].rename(columns={"symbol": "Ticker"}), hide_index=True)
 
             st.markdown("**Transactions**")
-            _trade_display = df_dates_to_date_only(trading_fees_y[["date", "paper_name", "amount"]].copy())
+            _trade_display = df_dates_to_date_only(trading_fees_y[["date", "symbol", "amount"]].copy())
             _trade_display = order_table_newest_first_with_chrono_index(_trade_display, "date")
-            if "paper_name" in _trade_display.columns:
-                _trade_display["paper_name"] = _trade_display["paper_name"].str.split("/").str[-1].str.strip().str.split().str[0]
-                _trade_display = _trade_display.rename(columns={"paper_name": "Ticker", "amount": "Amount"})
+            _trade_display = _trade_display.rename(columns={"symbol": "Ticker", "amount": "Amount"})
             st.dataframe(_trade_display, width="stretch", hide_index=True)
 
     st.divider()
@@ -321,29 +317,31 @@ with tab_fees:
     else:
         maintenance_fees_y = filter_tax_rows_by_year(maintenance_fees_all_df, selected_fees_year)
 
-        _maint_months = build_monthly_amount_series(
-            maintenance_fees_y,
-            selected_year=selected_fees_year,
-            amount_column="amount_value",
-            output_column="fee_amount",
-        )
-        _maint_months["month_label"] = _maint_months["month"].dt.strftime("%b")
-        _maint_month_order = pd.date_range(
-            start=f"{selected_fees_year}-01-01", periods=12, freq="MS"
-        ).strftime("%b").tolist()
-        _maint_fig = px.bar(
-            _maint_months,
-            x="month_label",
-            y="fee_amount",
-            title=f"Monthly Account Maintenance Fees [{selected_fees_year}]",
-            labels={"month_label": "Month", "fee_amount": "Amount"},
-            category_orders={"month_label": _maint_month_order},
-        )
-        _maint_fig.update_traces(marker_color="darkorange", width=0.2)
-        _maint_fig.update_layout(xaxis_title="Month", yaxis_title="Amount (₪)")
-        st.plotly_chart(_maint_fig, width="stretch")
+        if maintenance_fees_y.empty:
+            st.info("No account maintenance fee rows found for this year.")
+        else:
+            _maint_months = build_monthly_amount_series(
+                maintenance_fees_y,
+                selected_year=selected_fees_year,
+                amount_column="amount_value",
+                output_column="fee_amount",
+            )
+            _maint_months["month_label"] = _maint_months["month"].dt.strftime("%b")
+            _maint_month_order = pd.date_range(
+                start=f"{selected_fees_year}-01-01", periods=12, freq="MS"
+            ).strftime("%b").tolist()
+            _maint_fig = px.bar(
+                _maint_months,
+                x="month_label",
+                y="fee_amount",
+                title=f"Monthly Account Maintenance Fees [{selected_fees_year}]",
+                labels={"month_label": "Month", "fee_amount": "Amount"},
+                category_orders={"month_label": _maint_month_order},
+            )
+            _maint_fig.update_traces(marker_color="darkorange", width=0.2)
+            _maint_fig.update_layout(xaxis_title="Month", yaxis_title="Amount (₪)")
+            st.plotly_chart(_maint_fig, width="stretch")
 
-        if not maintenance_fees_y.empty:
             _maint_total = maintenance_fees_y["amount_value"].sum()
             st.metric("Total Maintenance Fees", f"₪{_maint_total:,.2f}")
 

@@ -1,4 +1,4 @@
-from .cashflow import monthly_fees_breakdown
+from .fees import monthly_fees_breakdown
 from .dividends import (
     DIVIDEND_DEPOSIT_ACTION_TYPES,
     DIVIDEND_TAX_ACTION_TYPES,

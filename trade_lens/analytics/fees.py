@@ -55,7 +55,7 @@ def build_trading_fees_ledger(ledger_df: pd.DataFrame) -> pd.DataFrame:
     df["amount_value"] = pd.to_numeric(df["fees_usd"], errors="coerce").fillna(0.0)
     df["amount"] = "$" + df["amount_value"].map(lambda v: f"{float(v):,.2f}")
 
-    result_cols = ["date", "paper_name", "amount", "amount_value"]
+    result_cols = ["date", "symbol", "amount", "amount_value"]
     return df[[c for c in result_cols if c in df.columns]].copy()
 
 
