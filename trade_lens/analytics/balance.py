@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import List
 
 import pandas as pd
@@ -10,10 +11,10 @@ from trade_lens.brokers.ibi import RawActionType
 EMPTY_COLUMNS = [
     "date",
     "action_type",
-    "description",
+    "action_description",
+    "fees_usd",
     "usd_delta",
     "ils_delta",
-    "fees_usd",
     "usd_balance",
     "ils_balance",
     "expected_ils_balance",
@@ -65,41 +66,50 @@ def balance_timeline_actions(ledger_df: pd.DataFrame) -> pd.DataFrame:
         symbol = str(row.get("symbol", "") or "")
         quantity = float(row.get("quantity", 0.0) or 0.0)
         execution_price = float(row.get("execution_price", 0.0) or 0.0)
-        fees_usd = float(row.get("fees_usd", 0.0) or 0.0)
         usd_delta = float(row.get("delta_usd", 0.0) or 0.0)
         ils_delta = float(row.get("delta_ils", 0.0) or 0.0)
         paper_name = str(row.get("paper_name", "") or "")
 
         if action_type == transfer_action:
-            return f"ILS deposit: {ils_delta:+,.2f} ILS"
+            if ils_delta != 0:
+                return f"deposit of {abs(ils_delta):,.2f}₪"
+            return f"deposit of {abs(usd_delta):,.2f}$"
 
-        if action_type == conversion_action and symbol == "99028":
-            conversion_text = f"ILS->USD conversion: {abs(ils_delta):,.2f} ILS -> {abs(usd_delta):,.2f} USD"
-            if paper_name:
-                conversion_text = f"{conversion_text} (rate: {paper_name})"
-            return conversion_text
+        if action_type == conversion_action:
+            _rate_match = re.search(r"[A-Z]+/[A-Z]+\s+[\d.]+", paper_name)
+            rate_part = f" (rate: {_rate_match.group()})" if _rate_match else ""
+            return f"converted {abs(ils_delta):,.2f}₪ to ${abs(usd_delta):,.2f}{rate_part}"
 
         if action_type in other_cash_actions:
             return paper_name or action_type
 
         if action_type in (buy_action, sell_action):
-            symbol_part = f" {symbol}" if symbol else ""
             total_cost = abs(execution_price * quantity)
-            return f"{action_type}{symbol_part}, total cost: {total_cost:,.2f} USD"
+            verb = "bought" if action_type == buy_action else "sold"
+            ticker_part = f" {symbol}" if symbol else ""
+            return f"{verb}{ticker_part} for ${total_cost:,.2f}"
+
+        if action_type == RawActionType.DIVIDEND_TAX.value:
+            return "dividend tax payment"
+
+        if action_type == RawActionType.DIVIDEND_DEPOSIT.value:
+            return "dividend deposit"
+
+        if action_type == RawActionType.TAX_CREDIT.value:
+            return "tax credit"
+
+        if action_type == RawActionType.TAX_PAYMENT.value:
+            return "gain tax payment"
+
+        if action_type == RawActionType.ACCOUNT_MAINTENANCE_FEE.value:
+            return "account maintenance fee"
 
         parts: List[str] = [action_type]
         if symbol:
             parts.append(symbol)
-        if quantity != 0:
-            parts.append(f"qty={quantity:,.4f}".rstrip("0").rstrip("."))
+        return " ".join([p for p in parts if p]).strip()
 
-        note = " ".join([p for p in parts if p]).strip()
-        if fees_usd != 0:
-            fee_text = f"fees: {abs(fees_usd):,.2f} USD"
-            note = f"{note}; {fee_text}" if note else fee_text
-        return note
-
-    out["description"] = out.apply(build_note, axis=1).fillna("").astype("string")
+    out["action_description"] = out.apply(build_note, axis=1).fillna("").astype("string")
 
     # Keep the original ledger index labels for traceability.
     out.sort_values(by=["date", "_seq"], inplace=True, kind="mergesort")
