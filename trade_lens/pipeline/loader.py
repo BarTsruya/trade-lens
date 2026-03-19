@@ -1,28 +1,39 @@
 from __future__ import annotations
 
 import io
-from typing import Sequence
+from typing import Optional, Sequence
 
 import pandas as pd
 
-from trade_lens.brokers.ibi import load_single, RawDataAttribute
-from trade_lens.pipeline.normalize import to_ledger
+from trade_lens.brokers.base import BrokerLoader
+from trade_lens.brokers.ibi import IBILoader, RawDataAttribute
+
+_DEFAULT_BROKER = IBILoader()
 
 
 def load_and_normalize_many(
     file_payloads: Sequence[tuple[str, bytes]],
+    broker: Optional[BrokerLoader] = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load multiple (filename, bytes) payloads and return (raw, ledger) DataFrames.
+
+    Args:
+        file_payloads: Sequence of (filename, file_bytes) tuples.
+        broker: BrokerLoader to use for loading and normalization.
+                Defaults to :class:`IBILoader` for backward compatibility.
 
     The returned ledger is stably sorted by date with same-day ordering preserved
     from the source file row order, and has a ``_display_idx`` column assigned
     (1 = oldest row, N = newest row).
     """
+    if broker is None:
+        broker = _DEFAULT_BROKER
+
     raw_frames: list[pd.DataFrame] = []
     ledger_frames: list[pd.DataFrame] = []
 
     for file_name, file_bytes in file_payloads:
-        raw_df_i = load_single(io.BytesIO(file_bytes)).copy()
+        raw_df_i = broker.load_raw(io.BytesIO(file_bytes)).copy()
         raw_df_i["source_file"] = file_name
         raw_df_i["_source_order"] = range(len(raw_df_i))
 
@@ -36,7 +47,7 @@ def load_and_normalize_many(
             is_desc = False
         raw_df_i["_date_desc"] = is_desc
 
-        ledger_df_i = to_ledger(raw_df_i).copy()
+        ledger_df_i = broker.normalize(raw_df_i).copy()
         ledger_df_i["source_file"] = file_name
         ledger_df_i["ledger_row_id"] = [f"{file_name}:{idx}" for idx in ledger_df_i.index]
 

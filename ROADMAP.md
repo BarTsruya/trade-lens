@@ -2,13 +2,14 @@
 
 ## my todo list:
 - [ ] compare nominal gain and real gain
-- [ ] conversions:
-      - calculate the average conversion rate (im crurious)
-      - load usd/ils rates and estimate conversion fee (ibi uses 0.7% margain)
 - [ ] fix full_range button warning
 - [ ] add expected ils balance to balance table
       - detect mismatch
 - [ ] save cache in case of refreash it would display the GUI with loaded data
+- For balance tab:
+  - add Current ILS and USD balances in bold on top
+  - add deposits section below
+  - load usd/ils rates and estimate conversion fee (ibi uses 0.7% margain)
 
 ## 2) Balance tab (cash timeline)
 
