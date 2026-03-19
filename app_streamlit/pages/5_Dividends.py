@@ -7,6 +7,7 @@ import streamlit as st
 from display_utils import (
     CHART_COLORS,
     df_dates_to_date_only,
+    get_plotly_template,
     inject_global_css,
     order_table_newest_first_with_chrono_index,
 )
@@ -45,7 +46,7 @@ fig = px.bar(
     category_orders={"month_label": month_order},
 )
 fig.update_traces(marker_color=CHART_COLORS["positive"], width=0.2)
-fig.update_layout(xaxis_title="Month", yaxis_title="Amount ($)", template="plotly_white")
+fig.update_layout(xaxis_title="Month", yaxis_title="Amount ($)", template=get_plotly_template())
 st.plotly_chart(fig, width="stretch")
 
 # ---------------------------------------------------------------------------

@@ -9,6 +9,7 @@ from display_utils import (
     CHART_COLORS,
     df_dates_to_date_only,
     format_signed_currency,
+    get_plotly_template,
     inject_global_css,
     order_table_newest_first_with_chrono_index,
 )
@@ -95,7 +96,7 @@ else:
         title=f"Capital Gains Tax — Monthly Breakdown [{selected_year}]",
         xaxis_title="Month", yaxis_title="Amount (₪)",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        template="plotly_white",
+        template=get_plotly_template(),
     )
     st.plotly_chart(fig, width="stretch")
 
@@ -161,7 +162,7 @@ else:
         category_orders={"month_label": month_order},
     )
     div_fig.update_traces(marker_color=CHART_COLORS["negative"], width=0.2)
-    div_fig.update_layout(xaxis_title="Month", yaxis_title="Amount ($)", template="plotly_white")
+    div_fig.update_layout(xaxis_title="Month", yaxis_title="Amount ($)", template=get_plotly_template())
     st.plotly_chart(div_fig, width="stretch")
 
     if not tax.dividend_tax_by_ticker.empty:

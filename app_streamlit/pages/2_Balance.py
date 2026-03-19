@@ -9,6 +9,7 @@ from display_utils import (
     CHART_COLORS,
     df_dates_to_date_only,
     format_signed_currency,
+    get_plotly_template,
     inject_global_css,
     order_table_newest_first_with_chrono_index,
 )
@@ -33,6 +34,14 @@ balance = get_balance_summary(st.session_state["ledger"])
 if balance.timeline.empty:
     st.warning("No balance actions found.")
     st.stop()
+
+# Current balances from the most recent timeline row
+_last = balance.timeline.iloc[-1]
+_current_usd = float(pd.to_numeric(_last.get("usd_balance", 0), errors="coerce") or 0)
+_current_ils = float(pd.to_numeric(_last.get("ils_balance", 0), errors="coerce") or 0)
+bal_c1, bal_c2 = st.columns(2)
+bal_c1.metric("Current USD Balance", f"${_current_usd:,.2f}")
+bal_c2.metric("Current ILS Balance", f"₪{_current_ils:,.2f}")
 
 table_df = df_dates_to_date_only(balance.timeline).drop(columns=["expected_ils_balance"], errors="ignore")
 for col in ("usd_delta", "fees_usd", "usd_balance"):
@@ -86,7 +95,7 @@ if not chart_df.empty:
         go.Scatter(x=chart_df["date"], y=chart_df["rate_value"], name="Rate (USD/ILS)", mode="lines+markers", marker_color=CHART_COLORS["warning"]),
         secondary_y=True,
     )
-    fig.update_layout(title=f"ILS Converted & Conversion Rate Over Time [{year_label}]", xaxis_title="Date", template="plotly_white")
+    fig.update_layout(title=f"ILS Converted & Conversion Rate Over Time [{year_label}]", xaxis_title="Date", template=get_plotly_template())
     fig.update_yaxes(title_text="ILS Amount (₪)", secondary_y=False)
     fig.update_yaxes(title_text="Rate (USD/ILS)", secondary_y=True)
     st.plotly_chart(fig, width="stretch")
@@ -96,7 +105,7 @@ if not chart_df.empty:
     c2.metric("Total ILS Converted",    f"₪{chart_df['delta_ils_abs'].sum():,.2f}")
     c3.metric("Total USD Produced",     f"${chart_df['delta_usd_abs'].sum():,.2f}")
 
-fx["ILS Amount"] = fx["delta_ils"].map(lambda v: format_signed_currency(v, "₪"))
+fx["ILS Amount"] = fx["delta_ils"].map(lambda v: format_signed_currency(abs(float(v)) if pd.notna(pd.to_numeric(v, errors="coerce")) else v, "₪"))
 fx["USD Amount"] = fx["delta_usd"].map(lambda v: format_signed_currency(v, "$"))
 fx["Rate"] = fx["rate_label"]
 fx_display = order_table_newest_first_with_chrono_index(fx[["date", "USD Amount", "ILS Amount", "Rate"]].copy(), "date")

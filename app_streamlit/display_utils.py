@@ -17,6 +17,15 @@ CHART_COLORS: dict[str, str] = {
 }
 
 
+def get_plotly_template() -> str:
+    """Return the appropriate Plotly template for the active Streamlit theme."""
+    try:
+        base = st.get_option("theme.base")
+        return "plotly_dark" if base == "dark" else "plotly_white"
+    except Exception:
+        return "plotly_white"
+
+
 def inject_global_css() -> None:
     """Inject shared CSS for a modern card-style dashboard look.
 
