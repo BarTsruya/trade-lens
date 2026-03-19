@@ -8,6 +8,7 @@ import pandas as pd
 
 from trade_lens.analytics.balance import balance_timeline_actions
 from trade_lens.brokers.ibi import RawActionType
+from trade_lens.models.schemas import BalanceResponse, BalanceRow, FxRow, FxSummaryData
 
 
 def _extract_fx_rate_label(paper_name: str) -> str:
@@ -36,6 +37,13 @@ class FxSummary:
     total_usd_produced: float
 
 
+def _iso(val: object) -> str:
+    """Convert a date/datetime-like value to an ISO date string."""
+    if hasattr(val, "date"):
+        return str(val.date())
+    return str(val)
+
+
 @dataclass
 class BalanceResult:
     """Result of the balance / cashflow service."""
@@ -53,6 +61,46 @@ class BalanceResult:
 
     # Aggregate FX statistics. None when there are no FX rows.
     fx_summary: Optional[FxSummary]
+
+    def to_response(self) -> BalanceResponse:
+        """Return a JSON-serializable response object."""
+        timeline_rows = [
+            BalanceRow(
+                date=_iso(r.get("date")),
+                action_description=str(r.get("action_description", "") or ""),
+                usd_delta=float(r.get("usd_delta") or 0.0),
+                ils_delta=float(r.get("ils_delta") or 0.0),
+                fees_usd=float(r.get("fees_usd") or 0.0),
+                usd_balance=float(r.get("usd_balance") or 0.0),
+                ils_balance=float(r.get("ils_balance") or 0.0),
+            )
+            for r in self.timeline.to_dict(orient="records")
+        ] if not self.timeline.empty else []
+
+        fx_rows = [
+            FxRow(
+                date=_iso(r.get("date")),
+                delta_ils=float(r.get("delta_ils") or 0.0),
+                delta_usd=float(r.get("delta_usd") or 0.0),
+                rate_label=str(r.get("rate_label", "") or ""),
+                rate_value=float(r["rate_value"]) if r.get("rate_value") is not None and str(r.get("rate_value")) != "nan" else None,
+            )
+            for r in self.fx_transactions.to_dict(orient="records")
+        ] if not self.fx_transactions.empty else []
+
+        fx_summary_data = None
+        if self.fx_summary is not None:
+            fx_summary_data = FxSummaryData(
+                avg_rate=self.fx_summary.avg_rate,
+                total_ils_converted=self.fx_summary.total_ils_converted,
+                total_usd_produced=self.fx_summary.total_usd_produced,
+            )
+
+        return BalanceResponse(
+            timeline=timeline_rows,
+            fx_transactions=fx_rows,
+            fx_summary=fx_summary_data,
+        )
 
 
 def get_balance_summary(ledger: pd.DataFrame) -> BalanceResult:

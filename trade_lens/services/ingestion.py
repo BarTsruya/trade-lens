@@ -6,6 +6,7 @@ from typing import Optional, Sequence
 import pandas as pd
 
 from trade_lens.brokers.base import BrokerLoader
+from trade_lens.models.schemas import IngestionResponse
 from trade_lens.pipeline.loader import (
     count_unknown_action_rows,
     get_unknown_action_details,
@@ -22,6 +23,15 @@ class IngestionResult:
     unknown_action_count: int
     unknown_action_details: pd.DataFrame
     file_count: int
+
+    def to_response(self) -> IngestionResponse:
+        """Return a JSON-serializable response object."""
+        return IngestionResponse(
+            file_count=self.file_count,
+            raw_row_count=len(self.raw),
+            ledger_row_count=len(self.ledger),
+            unknown_action_count=self.unknown_action_count,
+        )
 
 
 def ingest_files(

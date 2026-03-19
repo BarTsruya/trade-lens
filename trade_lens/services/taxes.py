@@ -13,6 +13,15 @@ from trade_lens.analytics.taxes import (
     filter_tax_rows_by_year,
     tax_year_options,
 )
+from trade_lens.models.schemas import (
+    CapitalGainsMonthlyRow,
+    CapitalGainsRow,
+    CapitalGainsSummary,
+    DividendTaxRow,
+    MonthlyAmount,
+    TaxResponse,
+    TickerAmount,
+)
 
 
 def _ticker_from_paper_name(series: pd.Series) -> pd.Series:
@@ -54,6 +63,104 @@ class TaxSummary:
 
     # Total dividend tax per currency (dict: currency_symbol -> total_value)
     dividend_tax_totals: dict[str, float]
+
+    def to_response(self) -> TaxResponse:
+        """Return a JSON-serializable response object."""
+        _empty_summary = CapitalGainsSummary(
+            payable_sum=0.0, credit_sum=0.0, payment_sum=0.0, annual_tax=0.0, remaining_shield=0.0
+        )
+        if self.selected_year is None:
+            return TaxResponse(
+                year_options=self.year_options,
+                selected_year=0,
+                capital_gains=[],
+                capital_gains_summary=_empty_summary,
+                capital_gains_monthly=[],
+                dividend_tax=[],
+                dividend_tax_monthly=[],
+                dividend_tax_by_ticker=[],
+                dividend_tax_totals={},
+            )
+
+        def _iso(val: object) -> str:
+            return str(val.date()) if hasattr(val, "date") else str(val)
+
+        cap_rows = [
+            CapitalGainsRow(
+                date=_iso(r.get("date")),
+                action_type=str(r.get("action_type", "") or ""),
+                paper_name=str(r.get("paper_name", "") or ""),
+                amount_value=float(r.get("amount_value") or 0.0),
+                tax_shield_state=float(r.get("tax_shield_state") or 0.0),
+                tax_payable_state=float(r.get("tax_payable_state") or 0.0),
+                total_annual_tax=float(r.get("total_annual_tax") or 0.0),
+            )
+            for r in self.capital_gains_by_year.to_dict(orient="records")
+        ] if not self.capital_gains_by_year.empty else []
+
+        raw_summary = self.summary
+        cap_summary = CapitalGainsSummary(
+            payable_sum=float(raw_summary.get("payable_sum", 0.0)),
+            credit_sum=float(raw_summary.get("credit_sum", 0.0)),
+            payment_sum=float(raw_summary.get("payment_sum", 0.0)),
+            annual_tax=float(raw_summary.get("annual_tax", 0.0)),
+            remaining_shield=float(raw_summary.get("remaining_shield", 0.0)),
+        )
+
+        cap_monthly = [
+            CapitalGainsMonthlyRow(
+                month=str(r["month"])[:7],
+                month_label=pd.Timestamp(r["month"]).strftime("%b"),
+                payable_amount=float(r.get("payable_amount") or 0.0),
+                payment_amount=float(r.get("payment_amount") or 0.0),
+                credit_amount=float(r.get("credit_amount") or 0.0),
+                shield_used=float(r.get("shield_used_bar") or 0.0),
+                shield_balance=float(r.get("shield_balance_bar") or 0.0),
+                rolling_shield=float(r.get("rolling_shield") or 0.0),
+            )
+            for r in self.monthly_chart.to_dict(orient="records")
+        ] if not self.monthly_chart.empty else []
+
+        div_tax_rows = [
+            DividendTaxRow(
+                date=_iso(r.get("date")),
+                paper_name=str(r.get("paper_name", "") or ""),
+                ticker=str(r.get("ticker", "") or ""),
+                amount_value=float(r.get("amount_value") or 0.0),
+                amount_currency=str(r.get("amount_currency", "") or ""),
+            )
+            for r in self.dividend_tax_by_year.to_dict(orient="records")
+        ] if not self.dividend_tax_by_year.empty else []
+
+        div_tax_monthly = [
+            MonthlyAmount(
+                month=str(r["month"])[:7],
+                month_label=pd.Timestamp(r["month"]).strftime("%b"),
+                amount=float(r.get("dividend_tax_amount") or 0.0),
+            )
+            for r in self.dividend_tax_monthly.to_dict(orient="records")
+        ] if not self.dividend_tax_monthly.empty else []
+
+        div_tax_by_ticker = [
+            TickerAmount(
+                ticker=str(r.get("ticker", "") or ""),
+                amount=float(r.get("amount_value") or 0.0),
+                currency=str(r.get("amount_currency", "") or ""),
+            )
+            for r in self.dividend_tax_by_ticker.to_dict(orient="records")
+        ] if not self.dividend_tax_by_ticker.empty else []
+
+        return TaxResponse(
+            year_options=[int(y) for y in self.year_options],
+            selected_year=int(self.selected_year),
+            capital_gains=cap_rows,
+            capital_gains_summary=cap_summary,
+            capital_gains_monthly=cap_monthly,
+            dividend_tax=div_tax_rows,
+            dividend_tax_monthly=div_tax_monthly,
+            dividend_tax_by_ticker=div_tax_by_ticker,
+            dividend_tax_totals={str(k): float(v) for k, v in self.dividend_tax_totals.items()},
+        )
 
 
 def get_tax_summary(

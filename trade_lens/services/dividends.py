@@ -11,6 +11,12 @@ from trade_lens.analytics.dividends import (
     dividend_deposit_year_options,
 )
 from trade_lens.analytics.taxes import filter_tax_rows_by_year
+from trade_lens.models.schemas import (
+    DividendDepositRow,
+    DividendResponse,
+    MonthlyAmount,
+    TickerAmount,
+)
 
 
 def _ticker_from_paper_name(series: pd.Series) -> pd.Series:
@@ -40,6 +46,59 @@ class DividendSummary:
 
     # Total dividends per currency (dict: currency_symbol -> total_value)
     totals: dict[str, float]
+
+    def to_response(self) -> DividendResponse:
+        """Return a JSON-serializable response object."""
+        if self.selected_year is None:
+            return DividendResponse(
+                year_options=self.year_options,
+                selected_year=0,
+                totals={},
+                monthly=[],
+                by_ticker=[],
+                transactions=[],
+            )
+
+        def _iso(val: object) -> str:
+            return str(val.date()) if hasattr(val, "date") else str(val)
+
+        monthly = [
+            MonthlyAmount(
+                month=str(r["month"])[:7],
+                month_label=pd.Timestamp(r["month"]).strftime("%b"),
+                amount=float(r.get("dividend_amount") or 0.0),
+            )
+            for r in self.monthly.to_dict(orient="records")
+        ] if not self.monthly.empty else []
+
+        by_ticker = [
+            TickerAmount(
+                ticker=str(r.get("ticker", "") or ""),
+                amount=float(r.get("amount_value") or 0.0),
+                currency=str(r.get("amount_currency", "") or ""),
+            )
+            for r in self.by_ticker.to_dict(orient="records")
+        ] if not self.by_ticker.empty else []
+
+        transactions = [
+            DividendDepositRow(
+                date=_iso(r.get("date")),
+                paper_name=str(r.get("paper_name", "") or ""),
+                ticker=str(r.get("ticker", "") or "") if "ticker" in r else "",
+                amount_value=float(r.get("amount_value") or 0.0),
+                amount_currency=str(r.get("amount_currency", "") or ""),
+            )
+            for r in self.deposit_by_year.to_dict(orient="records")
+        ] if not self.deposit_by_year.empty else []
+
+        return DividendResponse(
+            year_options=[int(y) for y in self.year_options],
+            selected_year=int(self.selected_year),
+            totals={str(k): float(v) for k, v in self.totals.items()},
+            monthly=monthly,
+            by_ticker=by_ticker,
+            transactions=transactions,
+        )
 
 
 def get_dividend_summary(

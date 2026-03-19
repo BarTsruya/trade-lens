@@ -8,6 +8,13 @@ import pandas as pd
 from trade_lens.analytics.dividends import build_monthly_amount_series, dividend_deposit_year_options
 from trade_lens.analytics.fees import build_maintenance_fees_ledger, build_trading_fees_ledger
 from trade_lens.analytics.taxes import filter_tax_rows_by_year
+from trade_lens.models.schemas import (
+    FeesResponse,
+    MaintenanceFeeRow,
+    MonthlyAmount,
+    TickerAmount,
+    TradingFeeRow,
+)
 
 
 @dataclass
@@ -31,6 +38,69 @@ class FeesSummary:
 
     # Per-ticker breakdown for trading fees (columns: symbol, amount_value)
     trading_by_ticker: pd.DataFrame
+
+    def to_response(self) -> FeesResponse:
+        """Return a JSON-serializable response object."""
+        if self.selected_year is None:
+            return FeesResponse(
+                year_options=self.year_options,
+                selected_year=0,
+                trading_total_usd=0.0,
+                maintenance_total_ils=0.0,
+                trading_monthly=[],
+                maintenance_monthly=[],
+                trading_by_ticker=[],
+                trading_transactions=[],
+                maintenance_transactions=[],
+            )
+
+        def _monthly(df: pd.DataFrame, amount_col: str) -> list[MonthlyAmount]:
+            return [
+                MonthlyAmount(
+                    month=str(r["month"])[:7],
+                    month_label=pd.Timestamp(r["month"]).strftime("%b"),
+                    amount=float(r.get(amount_col) or 0.0),
+                )
+                for r in df.to_dict(orient="records")
+            ] if not df.empty else []
+
+        trading_monthly = _monthly(self.trading_monthly, "fee_amount")
+        maintenance_monthly = _monthly(self.maintenance_monthly, "fee_amount")
+
+        trading_by_ticker = [
+            TickerAmount(ticker=str(r.get("symbol", "")), amount=float(r.get("amount_value") or 0.0), currency="$")
+            for r in self.trading_by_ticker.to_dict(orient="records")
+        ] if not self.trading_by_ticker.empty else []
+
+        trading_txns = [
+            TradingFeeRow(
+                date=str(pd.Timestamp(r["date"]).date()) if r.get("date") is not None else "",
+                action_type=str(r.get("action_type", "") or ""),
+                symbol=str(r.get("symbol", "") or ""),
+                amount_usd=float(r.get("amount_value") or 0.0),
+            )
+            for r in self.trading_by_year.to_dict(orient="records")
+        ] if not self.trading_by_year.empty else []
+
+        maintenance_txns = [
+            MaintenanceFeeRow(
+                date=str(pd.Timestamp(r["date"]).date()) if r.get("date") is not None else "",
+                amount_ils=float(r.get("amount_value") or 0.0),
+            )
+            for r in self.maintenance_by_year.to_dict(orient="records")
+        ] if not self.maintenance_by_year.empty else []
+
+        return FeesResponse(
+            year_options=[int(y) for y in self.year_options],
+            selected_year=int(self.selected_year),
+            trading_total_usd=self.trading_total,
+            maintenance_total_ils=self.maintenance_total,
+            trading_monthly=trading_monthly,
+            maintenance_monthly=maintenance_monthly,
+            trading_by_ticker=trading_by_ticker,
+            trading_transactions=trading_txns,
+            maintenance_transactions=maintenance_txns,
+        )
 
 
 def _empty_monthly(year: int, output_column: str) -> pd.DataFrame:
