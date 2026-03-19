@@ -14,33 +14,13 @@ from display_utils import (
     format_signed_currency,
     order_table_newest_first_with_chrono_index,
 )
-from trade_lens.analytics.balance import balance_timeline_actions
-from trade_lens.analytics.fees import (
-    build_maintenance_fees_ledger,
-    build_trading_fees_ledger,
-    monthly_fees_breakdown,
-)
-from trade_lens.analytics.ledger import (
-    filter_ledger,
-    ledger_action_options,
-    ledger_date_bounds,
-    ledger_symbol_options,
-)
-from trade_lens.analytics.dividends import (
-    build_dividend_deposit_ledger,
-    build_dividend_tax_ledger,
-    build_monthly_amount_series,
-    dividend_deposit_year_options,
-)
-from trade_lens.analytics.taxes import (
-    build_capital_gains_monthly_chart_df,
-    build_capital_gains_summary,
-    build_tax_ledger,
-    filter_tax_rows_by_year,
-    tax_year_options,
-)
 from trade_lens.brokers.ibi import RawActionType
-from trade_lens.pipeline.loader import count_unknown_action_rows, get_unknown_action_details, load_and_normalize_many
+from trade_lens.services.ingestion import ingest_files
+from trade_lens.services.ledger_view import LedgerFilters, get_ledger_view
+from trade_lens.services.balance import get_balance_summary
+from trade_lens.services.fees import get_fees_summary
+from trade_lens.services.taxes import get_tax_summary
+from trade_lens.services.dividends import get_dividend_summary
 
 
 st.set_page_config(page_title="Trade Lens", layout="wide")
@@ -49,8 +29,8 @@ st.caption("Upload an IBI actions .xlsx export to inspect ledger, cashflow, fees
 
 
 @st.cache_data(show_spinner=False)
-def _cached_load(file_payloads: Tuple[Tuple[str, bytes], ...]) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    return load_and_normalize_many(file_payloads)
+def _cached_ingest(file_payloads: Tuple[Tuple[str, bytes], ...]):
+    return ingest_files(file_payloads)
 
 
 # ---------------------------------------------------------------------------
@@ -65,20 +45,22 @@ if not uploaded_files:
 
 try:
     payloads = tuple((f.name, f.getvalue()) for f in uploaded_files)
-    raw, ledger = _cached_load(payloads)
+    ingestion = _cached_ingest(payloads)
 except Exception as exc:
     st.error("Could not load these files. Make sure each is a valid IBI actions .xlsx export.")
     st.exception(exc)
     st.stop()
 
-unknown_action_rows = count_unknown_action_rows(ledger)
-if unknown_action_rows > 0:
+raw = ingestion.raw
+ledger = ingestion.ledger
+
+if ingestion.unknown_action_count > 0:
     st.warning(
-        f"Loaded {len(uploaded_files):,} file(s): {len(raw):,} raw rows and normalized to {len(ledger):,} ledger rows. "
-        f"Detected {unknown_action_rows:,} row(s) with unrecognized action types."
+        f"Loaded {ingestion.file_count:,} file(s): {len(raw):,} raw rows and normalized to {len(ledger):,} ledger rows. "
+        f"Detected {ingestion.unknown_action_count:,} row(s) with unrecognized action types."
     )
-    with st.expander(f"Show unrecognized rows ({unknown_action_rows:,})", expanded=False):
-        unknown_details = get_unknown_action_details(raw, ledger)
+    with st.expander(f"Show unrecognized rows ({ingestion.unknown_action_count:,})", expanded=False):
+        unknown_details = ingestion.unknown_action_details
         if not unknown_details.empty:
             display_details = unknown_details.copy()
             if "date" in display_details.columns:
@@ -94,7 +76,7 @@ if unknown_action_rows > 0:
             st.dataframe(display_details, hide_index=True)
 else:
     st.success(
-        f"Loaded {len(uploaded_files):,} file(s): {len(raw):,} raw rows and normalized to {len(ledger):,} ledger rows."
+        f"Loaded {ingestion.file_count:,} file(s): {len(raw):,} raw rows and normalized to {len(ledger):,} ledger rows."
     )
 
 tab_ledger, tab_balance, tab_fees, tab_taxes, tab_dividend = st.tabs(["Ledger", "Balance", "Fees", "Taxes", "Dividends"])
@@ -106,10 +88,12 @@ tab_ledger, tab_balance, tab_fees, tab_taxes, tab_dividend = st.tabs(["Ledger", 
 with tab_ledger:
     st.subheader("Ledger Preview")
 
-    min_date, max_date = ledger_date_bounds(ledger)
+    # Unfiltered view to populate filter controls
+    full_view = get_ledger_view(ledger)
+    min_date, max_date = full_view.date_bounds
     default_date_range = (min_date, max_date)
-    action_options = ledger_action_options(ledger)
-    symbol_options = ledger_symbol_options(ledger)
+    action_options = full_view.action_options
+    symbol_options = full_view.symbol_options
 
     filter_col1, filter_col2, filter_col3 = st.columns(3)
     with filter_col1:
@@ -153,12 +137,13 @@ with tab_ledger:
         if isinstance(selected_date_range, tuple) and len(selected_date_range) == 2 and all(selected_date_range)
         else None
     )
-    filtered_ledger = filter_ledger(
-        ledger,
+    filters = LedgerFilters(
         date_range=active_date_range,
         action_types=selected_action_types or None,
         symbols=selected_symbols or None,
     )
+    view = get_ledger_view(ledger, filters) if any([active_date_range, selected_action_types, selected_symbols]) else full_view
+    filtered_ledger = view.filtered
 
     f_dates = pd.to_datetime(filtered_ledger.get("date"), errors="coerce")
     stat_col1, stat_col2, stat_col3 = st.columns(3)
@@ -204,14 +189,12 @@ with tab_balance:
     st.caption("Action-level cash timeline with running balances based on cash-affecting rows.")
     st.caption("Rows are displayed newest first. Index labels are chronological (1 = oldest).")
 
-    balance_df = balance_timeline_actions(ledger)
-    if not balance_df.empty:
-        balance_df["_display_idx"] = pd.to_numeric(ledger.get("_display_idx"), errors="coerce").reindex(balance_df.index)
+    balance = get_balance_summary(ledger)
 
-    if balance_df.empty:
+    if balance.timeline.empty:
         st.warning("No balance actions found for these action types.")
     else:
-        balance_display_df = df_dates_to_date_only(balance_df)
+        balance_display_df = df_dates_to_date_only(balance.timeline)
         balance_table_df = balance_display_df.drop(columns=["expected_ils_balance"], errors="ignore").copy()
         for usd_col in ("usd_delta", "fees_usd", "usd_balance"):
             if usd_col in balance_table_df.columns:
@@ -227,28 +210,20 @@ with tab_balance:
 
         st.divider()
         st.subheader("Foreign Exchange Conversions")
-        _fx_df = ledger.loc[ledger["action_type"] == RawActionType.FX_CONVERSION.value].copy()
-        if _fx_df.empty:
+
+        if balance.fx_transactions.empty:
             st.info("No foreign exchange conversion rows found.")
         else:
-            import re as _re
-            _fx_df["date"] = pd.to_datetime(_fx_df["date"], errors="coerce").dt.date
-            _fx_df["ILS Amount"] = pd.to_numeric(_fx_df.get("delta_ils"), errors="coerce").fillna(0.0).map(lambda v: format_signed_currency(v, "₪"))
-            _fx_df["USD Amount"] = pd.to_numeric(_fx_df.get("delta_usd"), errors="coerce").fillna(0.0).map(lambda v: format_signed_currency(v, "$"))
-            def _extract_rate(pn: str) -> str:
-                m = _re.search(r"[A-Z]+/[A-Z]+\s+[\d.]+", str(pn) if pn else "")
-                return m.group() if m else ""
-            _fx_df["Rate"] = _fx_df["paper_name"].apply(_extract_rate)
-            _fx_df["rate_value"] = _fx_df["Rate"].str.extract(r"([\d.]+)$").astype(float, errors="ignore")
-            _fx_chart_df = _fx_df[["date", "rate_value", "delta_ils", "delta_usd"]].copy()
-            _fx_chart_df["rate_value"] = pd.to_numeric(_fx_chart_df["rate_value"], errors="coerce")
-            _fx_chart_df["delta_ils"] = pd.to_numeric(_fx_chart_df["delta_ils"], errors="coerce").abs()
-            _fx_chart_df["delta_usd"] = pd.to_numeric(_fx_chart_df["delta_usd"], errors="coerce").abs()
-            _fx_chart_df = _fx_chart_df.dropna(subset=["rate_value", "delta_ils"]).sort_values("date")
+            fx = balance.fx_transactions.copy()
+
+            _fx_chart_df = fx.dropna(subset=["rate_value", "delta_ils"]).sort_values("date").copy()
+            _fx_chart_df["delta_ils_abs"] = _fx_chart_df["delta_ils"].abs()
+            _fx_chart_df["delta_usd_abs"] = _fx_chart_df["delta_usd"].abs()
+
             if not _fx_chart_df.empty:
                 _fx_fig = make_subplots(specs=[[{"secondary_y": True}]])
                 _fx_fig.add_trace(
-                    go.Bar(x=_fx_chart_df["date"], y=_fx_chart_df["delta_ils"], name="ILS Converted", marker_color="steelblue", opacity=0.6),
+                    go.Bar(x=_fx_chart_df["date"], y=_fx_chart_df["delta_ils_abs"], name="ILS Converted", marker_color="steelblue", opacity=0.6),
                     secondary_y=False,
                 )
                 _fx_fig.add_trace(
@@ -260,15 +235,16 @@ with tab_balance:
                 _fx_fig.update_yaxes(title_text="Rate (USD/ILS)", secondary_y=True)
                 st.plotly_chart(_fx_fig, width="stretch")
 
-                _fx_avg_rate = _fx_chart_df["rate_value"].mean()
-                _fx_total_ils = _fx_chart_df["delta_ils"].sum()
-                _fx_total_usd = _fx_chart_df["delta_usd"].sum()
-                _fx_sum_col1, _fx_sum_col2, _fx_sum_col3 = st.columns(3)
-                _fx_sum_col1.metric("Average Rate (USD/ILS)", f"{_fx_avg_rate:,.4f}")
-                _fx_sum_col2.metric("Total ILS Converted", f"₪{_fx_total_ils:,.2f}")
-                _fx_sum_col3.metric("Total USD Produced", f"${_fx_total_usd:,.2f}")
+                if balance.fx_summary is not None:
+                    _fx_sum_col1, _fx_sum_col2, _fx_sum_col3 = st.columns(3)
+                    _fx_sum_col1.metric("Average Rate (USD/ILS)", f"{balance.fx_summary.avg_rate:,.4f}")
+                    _fx_sum_col2.metric("Total ILS Converted", f"₪{balance.fx_summary.total_ils_converted:,.2f}")
+                    _fx_sum_col3.metric("Total USD Produced", f"${balance.fx_summary.total_usd_produced:,.2f}")
 
-            _fx_display = _fx_df[["date", "USD Amount", "ILS Amount", "Rate"]].copy()
+            fx["ILS Amount"] = fx["delta_ils"].map(lambda v: format_signed_currency(v, "₪"))
+            fx["USD Amount"] = fx["delta_usd"].map(lambda v: format_signed_currency(v, "$"))
+            fx["Rate"] = fx["rate_label"]
+            _fx_display = fx[["date", "USD Amount", "ILS Amount", "Rate"]].copy()
             _fx_display = order_table_newest_first_with_chrono_index(_fx_display, "date")
             st.dataframe(_fx_display, width="stretch", hide_index=True)
 
@@ -277,37 +253,21 @@ with tab_balance:
 # ---------------------------------------------------------------------------
 
 with tab_fees:
+    # Call service with no year first to get year options and default data
+    _fees_preview = get_fees_summary(ledger)
 
-    trading_fees_all_df = build_trading_fees_ledger(ledger)
-    maintenance_fees_all_df = build_maintenance_fees_ledger(ledger)
-
-    _fees_years = sorted(
-        set(dividend_deposit_year_options(trading_fees_all_df))
-        | set(dividend_deposit_year_options(maintenance_fees_all_df)),
-        reverse=True,
-    )
-
-    if not _fees_years:
+    if not _fees_preview.year_options:
         st.info("No fees data available.")
     else:
-        selected_fees_year = st.selectbox("Year", options=_fees_years, index=0, key="fees_year_filter")
+        selected_fees_year = st.selectbox("Year", options=_fees_preview.year_options, index=0, key="fees_year_filter")
+        fees = get_fees_summary(ledger, selected_fees_year) if selected_fees_year != _fees_preview.selected_year else _fees_preview
 
-    # ---------------------------------------------------------------------------
-    # Section 1: Trading Fees (USD)
-    # ---------------------------------------------------------------------------
-    st.subheader("Trading Fees")
+        # -----------------------------------------------------------------------
+        # Section 1: Trading Fees (USD)
+        # -----------------------------------------------------------------------
+        st.subheader("Trading Fees")
 
-    if not _fees_years:
-        st.info("No trading fee data available.")
-    else:
-        trading_fees_y = filter_tax_rows_by_year(trading_fees_all_df, selected_fees_year)
-
-        _trade_months = build_monthly_amount_series(
-            trading_fees_y,
-            selected_year=selected_fees_year,
-            amount_column="amount_value",
-            output_column="fee_amount",
-        )
+        _trade_months = fees.trading_monthly.copy()
         _trade_months["month_label"] = _trade_months["month"].dt.strftime("%b")
         _trade_month_order = pd.date_range(
             start=f"{selected_fees_year}-01-01", periods=12, freq="MS"
@@ -324,47 +284,32 @@ with tab_fees:
         _trade_fig.update_layout(xaxis_title="Month", yaxis_title="Amount ($)")
         st.plotly_chart(_trade_fig, width="stretch")
 
-        if not trading_fees_y.empty:
-            _trade_total = trading_fees_y["amount_value"].sum()
-            st.metric("Total Trading Fees", f"${_trade_total:,.2f}")
+        if not fees.trading_by_year.empty:
+            st.metric("Total Trading Fees", f"${fees.trading_total:,.2f}")
 
-            _trade_by_ticker = (
-                trading_fees_y.groupby("symbol")["amount_value"]
-                .sum()
-                .reset_index()
-                .sort_values("amount_value", ascending=False)
-            )
-            _trade_by_ticker["Amount"] = "$" + _trade_by_ticker["amount_value"].map(lambda v: f"{v:,.2f}")
-            st.dataframe(_trade_by_ticker[["symbol", "Amount"]].rename(columns={"symbol": "Ticker"}), hide_index=True)
+            if not fees.trading_by_ticker.empty:
+                _trade_by_ticker = fees.trading_by_ticker.copy()
+                _trade_by_ticker["Amount"] = "$" + _trade_by_ticker["amount_value"].map(lambda v: f"{v:,.2f}")
+                st.dataframe(_trade_by_ticker[["symbol", "Amount"]].rename(columns={"symbol": "Ticker"}), hide_index=True)
 
             st.markdown("**Transactions**")
-            _trade_cols = [c for c in ("date", "action_type", "symbol", "amount") if c in trading_fees_y.columns]
-            _trade_display = df_dates_to_date_only(trading_fees_y[_trade_cols].copy())
+            _trade_cols = [c for c in ("date", "action_type", "symbol", "amount") if c in fees.trading_by_year.columns]
+            _trade_display = df_dates_to_date_only(fees.trading_by_year[_trade_cols].copy())
             _trade_display = order_table_newest_first_with_chrono_index(_trade_display, "date")
             _trade_display = _trade_display.rename(columns={"action_type": "Action", "symbol": "Ticker", "amount": "Amount"})
             st.dataframe(_trade_display, width="stretch", hide_index=True)
 
-    st.divider()
+        st.divider()
 
-    # ---------------------------------------------------------------------------
-    # Section 2: Account Maintenance Fees (ILS)
-    # ---------------------------------------------------------------------------
-    st.subheader("Account Maintenance Fees")
+        # -----------------------------------------------------------------------
+        # Section 2: Account Maintenance Fees (ILS)
+        # -----------------------------------------------------------------------
+        st.subheader("Account Maintenance Fees")
 
-    if not _fees_years:
-        st.info("No account maintenance fee data available.")
-    else:
-        maintenance_fees_y = filter_tax_rows_by_year(maintenance_fees_all_df, selected_fees_year)
-
-        if maintenance_fees_y.empty:
+        if fees.maintenance_by_year.empty:
             st.info("No account maintenance fee rows found for this year.")
         else:
-            _maint_months = build_monthly_amount_series(
-                maintenance_fees_y,
-                selected_year=selected_fees_year,
-                amount_column="amount_value",
-                output_column="fee_amount",
-            )
+            _maint_months = fees.maintenance_monthly.copy()
             _maint_months["month_label"] = _maint_months["month"].dt.strftime("%b")
             _maint_month_order = pd.date_range(
                 start=f"{selected_fees_year}-01-01", periods=12, freq="MS"
@@ -381,11 +326,10 @@ with tab_fees:
             _maint_fig.update_layout(xaxis_title="Month", yaxis_title="Amount (₪)")
             st.plotly_chart(_maint_fig, width="stretch")
 
-            _maint_total = maintenance_fees_y["amount_value"].sum()
-            st.metric("Total Maintenance Fees", f"₪{_maint_total:,.2f}")
+            st.metric("Total Maintenance Fees", f"₪{fees.maintenance_total:,.2f}")
 
             st.markdown("**Transactions**")
-            _maint_display = df_dates_to_date_only(maintenance_fees_y[["date", "amount"]].copy())
+            _maint_display = df_dates_to_date_only(fees.maintenance_by_year[["date", "amount"]].copy())
             _maint_display = order_table_newest_first_with_chrono_index(_maint_display, "date")
             _maint_display = _maint_display.rename(columns={"amount": "Amount"})
             st.dataframe(_maint_display, width="stretch", hide_index=True)
@@ -400,36 +344,30 @@ with tab_taxes:
     if missing_cols:
         st.warning("Cannot build taxes table because required columns are missing: " + ", ".join(missing_cols))
     else:
-        taxes_table_df = build_tax_ledger(ledger)
-        dividend_tax_all_df = build_dividend_tax_ledger(ledger)
-        _available_years = tax_year_options(ledger, taxes_table_df)
+        _tax_preview = get_tax_summary(ledger)
 
-        if not _available_years:
+        if not _tax_preview.year_options:
             st.info("No tax-related actions found.")
         else:
-            selected_year = st.selectbox("Year", options=_available_years, index=0, key="taxes_year_filter")
+            selected_year = st.selectbox("Year", options=_tax_preview.year_options, index=0, key="taxes_year_filter")
+            tax = get_tax_summary(ledger, selected_year) if selected_year != _tax_preview.selected_year else _tax_preview
+
             st.subheader("Capital Gain Taxes")
 
-            taxes_y = filter_tax_rows_by_year(taxes_table_df, selected_year)
-            _sort_cols = ["date", "_display_idx"] if "_display_idx" in taxes_y.columns else ["date"]
-            taxes_y = taxes_y.sort_values(_sort_cols, ascending=True, kind="mergesort").reset_index(drop=True)
-
-            if not taxes_y.empty:
-                _chart = build_capital_gains_monthly_chart_df(taxes_y, selected_year)
+            if not tax.capital_gains_by_year.empty:
+                _chart = tax.monthly_chart
                 _month_labels = _chart["month"].dt.strftime("%b").tolist()
 
                 _show_shield = st.checkbox("Show Tax Shield", value=True)
 
-                # Manual bar positioning: zero-value bars take no space.
-                # Each month is centred at an integer position; active slots share 0.8 width evenly.
                 _n = len(_chart)
                 _centers = list(range(_n))
                 _slot_width_total = 0.8
 
-                _p_off, _p_w = [], []   # payable
-                _pay_off, _pay_w = [], []  # payment
-                _cr_off, _cr_w = [], []   # credit
-                _sh_off, _sh_w = [], []   # shield
+                _p_off, _p_w = [], []
+                _pay_off, _pay_w = [], []
+                _cr_off, _cr_w = [], []
+                _sh_off, _sh_w = [], []
 
                 for _i in range(_n):
                     _slots = []
@@ -516,30 +454,25 @@ with tab_taxes:
                 )
                 st.plotly_chart(_fig, width="stretch")
 
-                # --- Summary ---
                 st.subheader("Summary")
-                _summary = build_capital_gains_summary(taxes_y)
+                _summary = tax.summary
                 _sum_col1, _sum_col2, _sum_col3, _sum_col4 = st.columns(4)
                 _sum_col1.metric("Total Tax Payables", f"₪{_summary['payable_sum']:,.2f}")
                 _sum_col2.metric("Total Tax Credits",  f"₪{_summary['credit_sum']:,.2f}")
                 _sum_col3.metric("Annual Tax (payments − credits)", f"₪{_summary['annual_tax']:,.2f}")
                 _sum_col4.metric("Remaining Tax Shield", f"₪{_summary['remaining_shield']:,.2f}")
 
-                # --- Table (year-filtered, formatted) ---
-                taxes_display_df = taxes_y.drop(
-                    columns=["month"],
-                    errors="ignore",
-                ).copy()
-
+                taxes_display_df = tax.capital_gains_by_year.drop(columns=["month"], errors="ignore").copy()
                 for col in ("tax_shield_state", "tax_payable_state", "total_annual_tax"):
-                    taxes_display_df[col] = taxes_display_df[col].map(lambda v: format_signed_currency(v, "₪"))
+                    if col in taxes_display_df.columns:
+                        taxes_display_df[col] = taxes_display_df[col].map(lambda v: format_signed_currency(v, "₪"))
 
                 taxes_display_df = order_table_newest_first_with_chrono_index(taxes_display_df, "date")
                 if "_display_idx" in taxes_display_df.columns:
                     taxes_display_df = taxes_display_df.drop(columns=["_display_idx"])
                 annual_year_end_index = set(
                     taxes_display_df.index[taxes_display_df["_annual_year_end"].fillna(False)].tolist()
-                )
+                ) if "_annual_year_end" in taxes_display_df.columns else set()
                 taxes_display_df = taxes_display_df.drop(columns=["_annual_year_end", "amount_value"], errors="ignore")
                 taxes_display_df = df_dates_to_date_only(taxes_display_df)
 
@@ -561,28 +494,20 @@ with tab_taxes:
             else:
                 st.info("No capital gain tax actions found.")
 
-            # ---------------------------------------------------------------------------
+            # -----------------------------------------------------------------------
             # Dividend Taxes section
-            # ---------------------------------------------------------------------------
+            # -----------------------------------------------------------------------
             st.divider()
             st.subheader("Dividend Taxes")
 
-            dividend_tax_df = filter_tax_rows_by_year(dividend_tax_all_df, selected_year)
-
-            if dividend_tax_df.empty:
+            if tax.dividend_tax_by_year.empty:
                 st.info("No dividend tax rows found for this year.")
             else:
-                # --- Monthly bar chart: full 12-month axis ---
-                _div_months_merged = build_monthly_amount_series(
-                    dividend_tax_df,
-                    selected_year=selected_year,
-                    amount_column="amount_value",
-                    output_column="dividend_tax_amount",
-                )
-                _div_months_merged["month_label"] = _div_months_merged["month"].dt.strftime("%b")
+                _div_months = tax.dividend_tax_monthly.copy()
+                _div_months["month_label"] = _div_months["month"].dt.strftime("%b")
                 _month_order = pd.date_range(start=f"{selected_year}-01-01", periods=12, freq="MS").strftime("%b").tolist()
                 _div_fig = px.bar(
-                    _div_months_merged,
+                    _div_months,
                     x="month_label",
                     y="dividend_tax_amount",
                     title=f"Monthly Dividend Tax [{selected_year}]",
@@ -593,31 +518,19 @@ with tab_taxes:
                 _div_fig.update_layout(xaxis_title="Month", yaxis_title="Amount ($)")
                 st.plotly_chart(_div_fig, width="stretch")
 
-                # --- Summary ---
-                _div_tax_ticker = dividend_tax_df.copy()
-                _div_tax_ticker["ticker"] = _div_tax_ticker["paper_name"].str.split("/").str[-1].str.strip().str.split().str[0]
-                _div_tax_totals = _div_tax_ticker.groupby("amount_currency")["amount_value"].sum()
-                _div_tax_by_ticker = (
-                    _div_tax_ticker.groupby(["ticker", "amount_currency"])["amount_value"]
-                    .sum()
-                    .reset_index()
-                    .sort_values("amount_value", ascending=False)
-                )
-                _div_tax_by_ticker["total"] = _div_tax_by_ticker["amount_currency"] + _div_tax_by_ticker["amount_value"].map(lambda v: f"{v:,.2f}")
-                _div_tax_summary = _div_tax_by_ticker[["ticker", "total"]].rename(columns={"ticker": "Ticker", "total": "Tax Paid"})
+                if tax.dividend_tax_by_ticker is not None and not tax.dividend_tax_by_ticker.empty:
+                    _div_tax_by_ticker = tax.dividend_tax_by_ticker.copy()
+                    _div_tax_by_ticker["total"] = _div_tax_by_ticker["amount_currency"] + _div_tax_by_ticker["amount_value"].map(lambda v: f"{v:,.2f}")
+                    _div_tax_summary = _div_tax_by_ticker[["ticker", "total"]].rename(columns={"ticker": "Ticker", "total": "Tax Paid"})
 
-                _div_tax_metric_cols = st.columns(len(_div_tax_totals))
-                for _col, (_cur, _val) in zip(_div_tax_metric_cols, _div_tax_totals.items()):
-                    _col.metric(f"Total Dividend Tax ({_cur})", f"{_cur}{_val:,.2f}")
-                st.dataframe(_div_tax_summary, hide_index=True)
+                    _div_tax_metric_cols = st.columns(max(1, len(tax.dividend_tax_totals)))
+                    for _col, (_cur, _val) in zip(_div_tax_metric_cols, tax.dividend_tax_totals.items()):
+                        _col.metric(f"Total Dividend Tax ({_cur})", f"{_cur}{_val:,.2f}")
+                    st.dataframe(_div_tax_summary, hide_index=True)
 
-                # --- Table ---
                 st.markdown("**Transactions**")
-                _div_display_cols = [
-                    c for c in ("date", "paper_name", "currency", "amount")
-                    if c in dividend_tax_df.columns
-                ]
-                _div_display = df_dates_to_date_only(dividend_tax_df[_div_display_cols].copy())
+                _div_display_cols = [c for c in ("date", "paper_name", "amount") if c in tax.dividend_tax_by_year.columns]
+                _div_display = df_dates_to_date_only(tax.dividend_tax_by_year[_div_display_cols].copy())
                 if "paper_name" in _div_display.columns:
                     _div_display["paper_name"] = _div_display["paper_name"].str.split("/").str[-1].str.strip().str.split().str[0]
                     _div_display = _div_display.rename(columns={"paper_name": "Ticker"})
@@ -630,25 +543,17 @@ with tab_taxes:
 with tab_dividend:
     st.subheader("Dividends")
 
-    dividend_deposit_all_df = build_dividend_deposit_ledger(ledger)
-    _div_deposit_years = dividend_deposit_year_options(dividend_deposit_all_df)
+    _div_preview = get_dividend_summary(ledger)
 
-    if not _div_deposit_years:
+    if not _div_preview.year_options:
         st.info("No dividend deposit actions found.")
     else:
         selected_div_year = st.selectbox(
-            "Year", options=_div_deposit_years, index=0, key="dividend_year_filter"
+            "Year", options=_div_preview.year_options, index=0, key="dividend_year_filter"
         )
+        div = get_dividend_summary(ledger, selected_div_year) if selected_div_year != _div_preview.selected_year else _div_preview
 
-        dividend_deposit_y = filter_tax_rows_by_year(dividend_deposit_all_df, selected_div_year)
-
-        # --- Monthly bar chart ---
-        _dep_months = build_monthly_amount_series(
-            dividend_deposit_y,
-            selected_year=selected_div_year,
-            amount_column="amount_value",
-            output_column="dividend_amount",
-        )
+        _dep_months = div.monthly.copy()
         _dep_months["month_label"] = _dep_months["month"].dt.strftime("%b")
         _dep_month_order = pd.date_range(
             start=f"{selected_div_year}-01-01", periods=12, freq="MS"
@@ -665,37 +570,24 @@ with tab_dividend:
         _dep_fig.update_layout(xaxis_title="Month", yaxis_title="Amount ($)")
         st.plotly_chart(_dep_fig, width="stretch")
 
-        # --- Summary ---
-        if not dividend_deposit_y.empty:
-            _dep_ticker = dividend_deposit_y.copy()
-            _dep_ticker["ticker"] = _dep_ticker["paper_name"].str.split("/").str[-1].str.strip().str.split().str[0]
-            _dep_totals = _dep_ticker.groupby("amount_currency")["amount_value"].sum()
-            _dep_by_ticker = (
-                _dep_ticker.groupby(["ticker", "amount_currency"])["amount_value"]
-                .sum()
-                .reset_index()
-                .sort_values("amount_value", ascending=False)
-            )
-            _dep_by_ticker["total"] = _dep_by_ticker["amount_currency"] + _dep_by_ticker["amount_value"].map(lambda v: f"{v:,.2f}")
-            _dep_summary = _dep_by_ticker[["ticker", "total"]].rename(columns={"ticker": "Ticker", "total": "Dividends Received"})
+        if not div.deposit_by_year.empty:
+            if not div.by_ticker.empty:
+                _dep_by_ticker = div.by_ticker.copy()
+                _dep_by_ticker["total"] = _dep_by_ticker["amount_currency"] + _dep_by_ticker["amount_value"].map(lambda v: f"{v:,.2f}")
+                _dep_summary = _dep_by_ticker[["ticker", "total"]].rename(columns={"ticker": "Ticker", "total": "Dividends Received"})
 
-            _dep_metric_cols = st.columns(len(_dep_totals))
-            for _col, (_cur, _val) in zip(_dep_metric_cols, _dep_totals.items()):
-                _col.metric(f"Total Dividends ({_cur})", f"{_cur}{_val:,.2f}")
-            st.dataframe(_dep_summary, hide_index=True)
+                _dep_metric_cols = st.columns(max(1, len(div.totals)))
+                for _col, (_cur, _val) in zip(_dep_metric_cols, div.totals.items()):
+                    _col.metric(f"Total Dividends ({_cur})", f"{_cur}{_val:,.2f}")
+                st.dataframe(_dep_summary, hide_index=True)
 
-        # --- Table ---
-        if dividend_deposit_y.empty:
-            st.info("No dividend deposit rows found for this year.")
-        else:
             st.markdown("**Transactions**")
-            _dep_display_cols = [
-                c for c in ("date", "paper_name", "currency", "amount")
-                if c in dividend_deposit_y.columns
-            ]
-            _dep_display = df_dates_to_date_only(dividend_deposit_y[_dep_display_cols].copy())
+            _dep_display_cols = [c for c in ("date", "paper_name", "amount") if c in div.deposit_by_year.columns]
+            _dep_display = df_dates_to_date_only(div.deposit_by_year[_dep_display_cols].copy())
             _dep_display = order_table_newest_first_with_chrono_index(_dep_display, "date")
             if "paper_name" in _dep_display.columns:
                 _dep_display["paper_name"] = _dep_display["paper_name"].str.split("/").str[-1].str.strip().str.split().str[0]
                 _dep_display = _dep_display.rename(columns={"paper_name": "Ticker"})
             st.dataframe(_dep_display, width="stretch", hide_index=True)
+        else:
+            st.info("No dividend deposit rows found for this year.")
