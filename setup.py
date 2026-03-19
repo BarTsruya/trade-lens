@@ -10,6 +10,7 @@ setup(
     packages=find_packages(include=["trade_lens", "trade_lens.*"]),
     install_requires=[
         "pandas>=1.0",
+        "pydantic>=2.0",
     ],
     python_requires=">=3.8",
     classifiers=[

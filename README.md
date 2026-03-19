@@ -40,8 +40,9 @@ streamlit run app_streamlit/app.py
 
 On the computer running the app:
 
-```powershell
-streamlit run app_streamlit/app.py --server.address 0.0.0.0 --server.port 8501
+```Terminal
+.venv\Scripts\activate.bat
+.venv\Scripts\python.exe -m streamlit run app_streamlit/app.py --server.address 0.0.0.0 --server.port 8503
 ```
 
 Then on your phone, open:
