@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
@@ -56,11 +57,26 @@ if balance.fx_transactions.empty:
     st.stop()
 
 fx = balance.fx_transactions.copy()
+
+# ---------------------------------------------------------------------------
+# Year filter
+# ---------------------------------------------------------------------------
+
+fx_dates = pd.to_datetime(fx["date"], errors="coerce")
+fx_years = sorted(fx_dates.dt.year.dropna().unique().astype(int).tolist(), reverse=True)
+fx_year_options = ["All time"] + fx_years
+
+fx_year_filter = st.selectbox("Year", options=fx_year_options, key="fx_year_filter")
+
+if fx_year_filter != "All time":
+    fx = fx[pd.to_datetime(fx["date"], errors="coerce").dt.year == int(fx_year_filter)].copy()
+
 chart_df = fx.dropna(subset=["rate_value", "delta_ils"]).sort_values("date").copy()
 chart_df["delta_ils_abs"] = chart_df["delta_ils"].abs()
 chart_df["delta_usd_abs"] = chart_df["delta_usd"].abs()
 
 if not chart_df.empty:
+    year_label = str(fx_year_filter) if fx_year_filter != "All time" else "All time"
     fig = make_subplots(specs=[[{"secondary_y": True}]])
     fig.add_trace(
         go.Bar(x=chart_df["date"], y=chart_df["delta_ils_abs"], name="ILS Converted", marker_color="#0369A1"),
@@ -70,16 +86,15 @@ if not chart_df.empty:
         go.Scatter(x=chart_df["date"], y=chart_df["rate_value"], name="Rate (USD/ILS)", mode="lines+markers", marker_color=CHART_COLORS["warning"]),
         secondary_y=True,
     )
-    fig.update_layout(title="ILS Converted & Conversion Rate Over Time", xaxis_title="Date", template="plotly_white")
+    fig.update_layout(title=f"ILS Converted & Conversion Rate Over Time [{year_label}]", xaxis_title="Date", template="plotly_white")
     fig.update_yaxes(title_text="ILS Amount (₪)", secondary_y=False)
     fig.update_yaxes(title_text="Rate (USD/ILS)", secondary_y=True)
     st.plotly_chart(fig, width="stretch")
 
-    if balance.fx_summary is not None:
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Average Rate (USD/ILS)", f"{balance.fx_summary.avg_rate:,.4f}")
-        c2.metric("Total ILS Converted",    f"₪{balance.fx_summary.total_ils_converted:,.2f}")
-        c3.metric("Total USD Produced",     f"${balance.fx_summary.total_usd_produced:,.2f}")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Average Rate (USD/ILS)", f"{chart_df['rate_value'].mean():,.4f}")
+    c2.metric("Total ILS Converted",    f"₪{chart_df['delta_ils_abs'].sum():,.2f}")
+    c3.metric("Total USD Produced",     f"${chart_df['delta_usd_abs'].sum():,.2f}")
 
 fx["ILS Amount"] = fx["delta_ils"].map(lambda v: format_signed_currency(v, "₪"))
 fx["USD Amount"] = fx["delta_usd"].map(lambda v: format_signed_currency(v, "$"))
