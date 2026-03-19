@@ -16,6 +16,7 @@ from trade_lens.services.fees import get_fees_summary
 st.set_page_config(page_title="Fees — Trade Lens", layout="wide")
 inject_global_css()
 st.subheader("Fees")
+st.caption("What you paid your broker — trading commissions and account maintenance charges.")
 
 if "ledger" not in st.session_state:
     st.info("Upload files on the Home page first.")

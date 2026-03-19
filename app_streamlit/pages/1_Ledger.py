@@ -15,7 +15,8 @@ from trade_lens.services.ledger_view import LedgerFilters, get_ledger_view
 
 st.set_page_config(page_title="Ledger — Trade Lens", layout="wide")
 inject_global_css()
-st.subheader("Ledger Preview")
+st.subheader("Ledger")
+st.caption("All your transactions in one place. Filter by date, type, or stock.")
 
 if "ledger" not in st.session_state:
     st.info("Upload files on the Home page first.")

@@ -19,6 +19,7 @@ from trade_lens.services.taxes import get_tax_summary
 st.set_page_config(page_title="Taxes — Trade Lens", layout="wide")
 inject_global_css()
 st.subheader("Taxes")
+st.caption("Tax events from your broker — capital gains on stock sales and tax withheld on dividends.")
 
 if "ledger" not in st.session_state:
     st.info("Upload files on the Home page first.")
@@ -44,6 +45,7 @@ tax = get_tax_summary(ledger, selected_year) if selected_year != preview.selecte
 # ---------------------------------------------------------------------------
 
 st.subheader("Capital Gain Taxes")
+st.caption("Tax owed when selling a stock at a profit. Losses can offset gains through the tax shield.")
 
 if tax.capital_gains_by_year.empty:
     st.info("No capital gain tax actions found.")
@@ -147,6 +149,7 @@ else:
 
 st.divider()
 st.subheader("Dividend Taxes")
+st.caption("Tax withheld by the broker on dividend payments before the cash reaches your account.")
 
 if tax.dividend_tax_by_year.empty:
     st.info("No dividend tax rows found for this year.")

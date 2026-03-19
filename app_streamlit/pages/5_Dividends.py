@@ -16,6 +16,7 @@ from trade_lens.services.dividends import get_dividend_summary
 st.set_page_config(page_title="Dividends — Trade Lens", layout="wide")
 inject_global_css()
 st.subheader("Dividends")
+st.caption("Cash payments received from stocks you hold, broken down by month and ticker.")
 
 if "ledger" not in st.session_state:
     st.info("Upload files on the Home page first.")

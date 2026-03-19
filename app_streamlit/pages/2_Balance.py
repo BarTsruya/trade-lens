@@ -18,8 +18,7 @@ from trade_lens.services.balance import get_balance_summary
 st.set_page_config(page_title="Balance — Trade Lens", layout="wide")
 inject_global_css()
 st.subheader("Balance")
-st.caption("Action-level cash timeline with running balances based on cash-affecting rows.")
-st.caption("Rows are displayed newest first. Index labels are chronological (1 = oldest).")
+st.caption("Your cash in and out over time, with a running total after each transaction.")
 
 if "ledger" not in st.session_state:
     st.info("Upload files on the Home page first.")
@@ -60,6 +59,7 @@ st.dataframe(table_df, width="stretch", hide_index=False)
 
 st.divider()
 st.subheader("Foreign Exchange Conversions")
+st.caption("ILS converted to USD — amounts and the exchange rate at the time of each conversion.")
 
 if balance.fx_transactions.empty:
     st.info("No foreign exchange conversion rows found.")
