@@ -5,12 +5,15 @@ import plotly.express as px
 import streamlit as st
 
 from display_utils import (
+    CHART_COLORS,
     df_dates_to_date_only,
+    inject_global_css,
     order_table_newest_first_with_chrono_index,
 )
 from trade_lens.services.fees import get_fees_summary
 
 st.set_page_config(page_title="Fees — Trade Lens", layout="wide")
+inject_global_css()
 st.subheader("Fees")
 
 if "ledger" not in st.session_state:
@@ -43,8 +46,8 @@ fig = px.bar(
     labels={"month_label": "Month", "fee_amount": "Amount"},
     category_orders={"month_label": month_order},
 )
-fig.update_traces(marker_color="indianred", width=0.2)
-fig.update_layout(xaxis_title="Month", yaxis_title="Amount ($)")
+fig.update_traces(marker_color=CHART_COLORS["negative"], width=0.2)
+fig.update_layout(xaxis_title="Month", yaxis_title="Amount ($)", template="plotly_white")
 st.plotly_chart(fig, width="stretch")
 
 if not fees.trading_by_year.empty:
@@ -81,8 +84,8 @@ else:
         labels={"month_label": "Month", "fee_amount": "Amount"},
         category_orders={"month_label": maint_month_order},
     )
-    maint_fig.update_traces(marker_color="darkorange", width=0.2)
-    maint_fig.update_layout(xaxis_title="Month", yaxis_title="Amount (₪)")
+    maint_fig.update_traces(marker_color=CHART_COLORS["warning"], width=0.2)
+    maint_fig.update_layout(xaxis_title="Month", yaxis_title="Amount (₪)", template="plotly_white")
     st.plotly_chart(maint_fig, width="stretch")
 
     st.metric("Total Maintenance Fees", f"₪{fees.maintenance_total:,.2f}")

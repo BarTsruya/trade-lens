@@ -1,6 +1,67 @@
 from __future__ import annotations
 
 import pandas as pd
+import streamlit as st
+
+# ---------------------------------------------------------------------------
+# Chart color palette — import this in every page to keep colors consistent
+# ---------------------------------------------------------------------------
+
+CHART_COLORS: dict[str, str] = {
+    "positive":      "#10B981",  # emerald  — gains, dividends, credits
+    "negative":      "#EF4444",  # red      — losses, tax payments, fees
+    "primary":       "#3B82F6",  # blue     — neutral primary bars
+    "warning":       "#F59E0B",  # amber    — FX rate, shield used, maintenance
+    "shield_balance": "#EAB308", # yellow   — shield balance bar
+    "muted":         "#6B7280",  # gray     — payable / pending bars
+}
+
+
+def inject_global_css() -> None:
+    """Inject shared CSS for a modern card-style dashboard look.
+
+    Call this once at the top of every page (after st.set_page_config).
+    """
+    primary = CHART_COLORS["primary"]
+    st.markdown(
+        f"""
+        <style>
+        /* ── Metric cards ─────────────────────────────────────────────── */
+        [data-testid="stMetric"] {{
+            border: 1px solid rgba(128,128,128,0.2);
+            border-radius: 10px;
+            padding: 1rem 1.25rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        }}
+        [data-testid="stMetricLabel"] > div {{
+            font-size: 0.8rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            opacity: 0.7;
+        }}
+        [data-testid="stMetricValue"] > div {{
+            font-size: 1.6rem;
+            font-weight: 700;
+        }}
+
+        /* ── Section headings — underline accent ──────────────────────── */
+        h2, h3 {{
+            border-bottom: 2px solid {primary};
+            padding-bottom: 0.25rem;
+            margin-top: 1.4rem !important;
+            margin-bottom: 1rem !important;
+        }}
+
+        /* ── File uploader ────────────────────────────────────────────── */
+        [data-testid="stFileUploaderDropzone"] {{
+            border: 2px dashed {primary} !important;
+            border-radius: 10px;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def df_dates_to_date_only(df: pd.DataFrame) -> pd.DataFrame:

@@ -6,14 +6,17 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from display_utils import (
+    CHART_COLORS,
     df_dates_to_date_only,
     format_signed_currency,
+    inject_global_css,
     order_table_newest_first_with_chrono_index,
 )
 from trade_lens.brokers.ibi import RawActionType
 from trade_lens.services.taxes import get_tax_summary
 
 st.set_page_config(page_title="Taxes — Trade Lens", layout="wide")
+inject_global_css()
 st.subheader("Taxes")
 
 if "ledger" not in st.session_state:
@@ -80,18 +83,19 @@ else:
         o, w = _get("shield");   sh_off.append(o);  sh_w.append(w)
 
     fig = go.Figure()
-    fig.add_trace(go.Bar(name="Payable", x=centers, y=chart["payable_amount"], offset=p_off,   width=p_w,   marker_color="gray",      opacity=0.6))
-    fig.add_trace(go.Bar(name="Payment", x=centers, y=chart["payment_amount"], offset=pay_off, width=pay_w, marker_color="crimson"))
-    fig.add_trace(go.Bar(name="Credit",  x=centers, y=chart["credit_amount"],  offset=cr_off,  width=cr_w,  marker_color="seagreen"))
+    fig.add_trace(go.Bar(name="Payable", x=centers, y=chart["payable_amount"], offset=p_off,   width=p_w,   marker_color=CHART_COLORS["muted"],    opacity=0.7))
+    fig.add_trace(go.Bar(name="Payment", x=centers, y=chart["payment_amount"], offset=pay_off, width=pay_w, marker_color=CHART_COLORS["negative"]))
+    fig.add_trace(go.Bar(name="Credit",  x=centers, y=chart["credit_amount"],  offset=cr_off,  width=cr_w,  marker_color=CHART_COLORS["positive"]))
     if show_shield:
-        fig.add_trace(go.Bar(name="Shield Used",    x=centers, y=chart["shield_used_bar"],    base=[0.0]*n, offset=sh_off, width=sh_w, marker_color="darkorange"))
-        fig.add_trace(go.Bar(name="Shield Balance", x=centers, y=chart["shield_balance_bar"], base=chart["shield_used_bar"].tolist(), offset=sh_off, width=sh_w, marker_color="goldenrod"))
+        fig.add_trace(go.Bar(name="Shield Used",    x=centers, y=chart["shield_used_bar"],    base=[0.0]*n, offset=sh_off, width=sh_w, marker_color=CHART_COLORS["warning"]))
+        fig.add_trace(go.Bar(name="Shield Balance", x=centers, y=chart["shield_balance_bar"], base=chart["shield_used_bar"].tolist(), offset=sh_off, width=sh_w, marker_color=CHART_COLORS["shield_balance"]))
     fig.update_layout(
         barmode="overlay",
         xaxis=dict(tickmode="array", tickvals=centers, ticktext=month_labels),
         title=f"Capital Gains Tax — Monthly Breakdown [{selected_year}]",
         xaxis_title="Month", yaxis_title="Amount (₪)",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        template="plotly_white",
     )
     st.plotly_chart(fig, width="stretch")
 
@@ -127,9 +131,9 @@ else:
         if amt_i >= 0:
             at = str(row.get("action_type", "") or "")
             if at == RawActionType.TAX_CREDIT.value:
-                styles[amt_i] = "color: #2e7d32; font-weight: 600;"
+                styles[amt_i] = f"color: {CHART_COLORS['positive']}; font-weight: 600;"
             elif at == RawActionType.TAX_PAYMENT.value:
-                styles[amt_i] = "color: #c62828; font-weight: 600;"
+                styles[amt_i] = f"color: {CHART_COLORS['negative']}; font-weight: 600;"
         if ann_i >= 0 and row.name in annual_end_idx:
             styles[ann_i] = "font-weight: 700;"
         return styles
@@ -156,8 +160,8 @@ else:
         labels={"month_label": "Month", "dividend_tax_amount": "Amount"},
         category_orders={"month_label": month_order},
     )
-    div_fig.update_traces(marker_color="crimson", width=0.2)
-    div_fig.update_layout(xaxis_title="Month", yaxis_title="Amount ($)")
+    div_fig.update_traces(marker_color=CHART_COLORS["negative"], width=0.2)
+    div_fig.update_layout(xaxis_title="Month", yaxis_title="Amount ($)", template="plotly_white")
     st.plotly_chart(div_fig, width="stretch")
 
     if not tax.dividend_tax_by_ticker.empty:

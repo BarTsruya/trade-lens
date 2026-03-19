@@ -5,12 +5,15 @@ import plotly.express as px
 import streamlit as st
 
 from display_utils import (
+    CHART_COLORS,
     df_dates_to_date_only,
+    inject_global_css,
     order_table_newest_first_with_chrono_index,
 )
 from trade_lens.services.dividends import get_dividend_summary
 
 st.set_page_config(page_title="Dividends — Trade Lens", layout="wide")
+inject_global_css()
 st.subheader("Dividends")
 
 if "ledger" not in st.session_state:
@@ -41,8 +44,8 @@ fig = px.bar(
     labels={"month_label": "Month", "dividend_amount": "Amount"},
     category_orders={"month_label": month_order},
 )
-fig.update_traces(marker_color="seagreen", width=0.2)
-fig.update_layout(xaxis_title="Month", yaxis_title="Amount ($)")
+fig.update_traces(marker_color=CHART_COLORS["positive"], width=0.2)
+fig.update_layout(xaxis_title="Month", yaxis_title="Amount ($)", template="plotly_white")
 st.plotly_chart(fig, width="stretch")
 
 # ---------------------------------------------------------------------------

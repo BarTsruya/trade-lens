@@ -8,11 +8,13 @@ import streamlit as st
 from display_utils import (
     df_dates_to_date_only,
     format_signed_currency,
+    inject_global_css,
     order_table_newest_first_with_chrono_index,
 )
 from trade_lens.services.ledger_view import LedgerFilters, get_ledger_view
 
 st.set_page_config(page_title="Ledger — Trade Lens", layout="wide")
+inject_global_css()
 st.subheader("Ledger Preview")
 
 if "ledger" not in st.session_state:

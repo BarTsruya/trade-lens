@@ -5,13 +5,16 @@ import streamlit as st
 from plotly.subplots import make_subplots
 
 from display_utils import (
+    CHART_COLORS,
     df_dates_to_date_only,
     format_signed_currency,
+    inject_global_css,
     order_table_newest_first_with_chrono_index,
 )
 from trade_lens.services.balance import get_balance_summary
 
 st.set_page_config(page_title="Balance — Trade Lens", layout="wide")
+inject_global_css()
 st.subheader("Balance")
 st.caption("Action-level cash timeline with running balances based on cash-affecting rows.")
 st.caption("Rows are displayed newest first. Index labels are chronological (1 = oldest).")
@@ -60,14 +63,14 @@ chart_df["delta_usd_abs"] = chart_df["delta_usd"].abs()
 if not chart_df.empty:
     fig = make_subplots(specs=[[{"secondary_y": True}]])
     fig.add_trace(
-        go.Bar(x=chart_df["date"], y=chart_df["delta_ils_abs"], name="ILS Converted", marker_color="steelblue", opacity=0.6),
+        go.Bar(x=chart_df["date"], y=chart_df["delta_ils_abs"], name="ILS Converted", marker_color="#0369A1"),
         secondary_y=False,
     )
     fig.add_trace(
-        go.Scatter(x=chart_df["date"], y=chart_df["rate_value"], name="Rate (USD/ILS)", mode="lines+markers", marker_color="darkorange"),
+        go.Scatter(x=chart_df["date"], y=chart_df["rate_value"], name="Rate (USD/ILS)", mode="lines+markers", marker_color=CHART_COLORS["warning"]),
         secondary_y=True,
     )
-    fig.update_layout(title="ILS Converted & Conversion Rate Over Time", xaxis_title="Date")
+    fig.update_layout(title="ILS Converted & Conversion Rate Over Time", xaxis_title="Date", template="plotly_white")
     fig.update_yaxes(title_text="ILS Amount (₪)", secondary_y=False)
     fig.update_yaxes(title_text="Rate (USD/ILS)", secondary_y=True)
     st.plotly_chart(fig, width="stretch")
