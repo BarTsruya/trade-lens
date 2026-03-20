@@ -11,6 +11,7 @@
   - add deposits section below
   - load usd/ils rates and estimate conversion fee (ibi uses 0.7% margain)
 - maintaine versions, show version number on GUI
+- remember the filtering options even if switch tab
 
 ## 2) Balance tab (cash timeline)
 
