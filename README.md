@@ -29,6 +29,7 @@ On first run it creates a virtual environment and installs all dependencies auto
 ```bash
 pip install -r requirements.txt
 streamlit run app_streamlit/Home.py
+.venv\Scripts\python.exe -m streamlit run app_streamlit/Home.py --server.address 0.0.0.0 --server.port 8503
 ```
 
 Then open `http://localhost:8501` in your browser.
