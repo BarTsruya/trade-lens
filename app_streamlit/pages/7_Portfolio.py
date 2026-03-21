@@ -114,21 +114,40 @@ st.subheader("Closed Trades")
 if not summary.closed_trades:
     st.info("No closed trades found.")
 else:
+    pnls = [ct.realized_pnl for ct in summary.closed_trades]
+    wins = [p for p in pnls if p > 0]
+    losses = [p for p in pnls if p < 0]
+    total_pnl = sum(pnls)
+    win_rate = len(wins) / len(pnls) * 100 if pnls else 0.0
+    avg_win = sum(wins) / len(wins) if wins else 0.0
+    avg_loss = sum(losses) / len(losses) if losses else 0.0
+    turnover = sum(ct.total_proceeds for ct in summary.closed_trades)
+
+    pnl_sign = "+" if total_pnl >= 0 else "-"
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Realized P&L", f"{pnl_sign}${abs(total_pnl):,.2f}")
+    c2.metric("Win Rate", f"{win_rate:.0f}%  ({len(wins)}/{len(pnls)})")
+    c3.metric("Avg Win", f"+${avg_win:,.2f}" if wins else "—")
+    c4.metric("Avg Loss", f"-${abs(avg_loss):,.2f}" if losses else "—")
+    c5.metric("Turnover", f"${turnover:,.2f}")
+
+    st.divider()
+
     for ct in summary.closed_trades:
         date_from = pd.to_datetime(ct.date_from).strftime("%b %d, %Y") if pd.notna(ct.date_from) else "?"
         date_to = pd.to_datetime(ct.date_to).strftime("%b %d, %Y") if pd.notna(ct.date_to) else "?"
-        pnl_sign = "+" if ct.realized_pnl >= 0 else ""
+        pnl_sign = "+" if ct.realized_pnl >= 0 else "-"
         pnl_color = "green" if ct.realized_pnl >= 0 else "red"
 
         with st.expander(
             f"**{ct.symbol}** — {date_from} → {date_to} &nbsp;&nbsp; "
-            f"P&L: :{pnl_color}[{pnl_sign}${ct.realized_pnl:,.2f}]",
+            f"P&L: :{pnl_color}[{pnl_sign}${abs(ct.realized_pnl):,.2f}]",
             expanded=False,
         ):
             c1, c2, c3 = st.columns(3)
             c1.metric("Proceeds", f"${ct.total_proceeds:,.2f}")
             c2.metric("Cost Basis", f"${ct.total_buy_cost:,.2f}")
-            c3.metric("Realized P&L", f"{pnl_sign}${ct.realized_pnl:,.2f}")
+            c3.metric("Realized P&L", f"{pnl_sign}${abs(ct.realized_pnl):,.2f}")
 
             rows = ct.rows.copy()
             rows["date"] = pd.to_datetime(rows["date"], errors="coerce").dt.date

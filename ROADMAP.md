@@ -21,6 +21,7 @@
 ## Trades (new tab)
 
 - [ ] Buy/sell blotter: date, symbol, side, qty, executed price, fees, delta USD
+- [ ] for each trade: write the total fees and tax to pay in case of profitable one
 - [ ] Filters: date range, symbol
 - [ ] Closed trade stats (FIFO): realized P&L, win rate, avg win/loss, turnover
 - [ ] Export to CSV
