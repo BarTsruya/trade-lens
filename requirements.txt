@@ -38,7 +38,6 @@ streamlit==1.55.0
 tenacity==9.1.4
 toml==0.10.2
 tornado==6.5.5
--e git+ssh://git@github.com/BarTsruya/trade-lens.git@8a204d3cd77bd05d4aa1d4e15f5b59aa1ed864b0#egg=TradeLens
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 tzdata==2025.3
