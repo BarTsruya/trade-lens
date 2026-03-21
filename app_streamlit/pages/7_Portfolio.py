@@ -102,3 +102,45 @@ else:
     st.download_button("Download CSV", data=csv, file_name=label, mime="text/csv")
 
     st.dataframe(display_df, width="stretch", hide_index=False)
+
+st.divider()
+
+# ---------------------------------------------------------------------------
+# Closed Trades
+# ---------------------------------------------------------------------------
+
+st.subheader("Closed Trades")
+
+if not summary.closed_trades:
+    st.info("No closed trades found.")
+else:
+    for ct in summary.closed_trades:
+        date_from = pd.to_datetime(ct.date_from).strftime("%b %d, %Y") if pd.notna(ct.date_from) else "?"
+        date_to = pd.to_datetime(ct.date_to).strftime("%b %d, %Y") if pd.notna(ct.date_to) else "?"
+        pnl_sign = "+" if ct.realized_pnl >= 0 else ""
+        pnl_color = "green" if ct.realized_pnl >= 0 else "red"
+
+        with st.expander(
+            f"**{ct.symbol}** — {date_from} → {date_to} &nbsp;&nbsp; "
+            f"P&L: :{pnl_color}[{pnl_sign}${ct.realized_pnl:,.2f}]",
+            expanded=False,
+        ):
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Proceeds", f"${ct.total_proceeds:,.2f}")
+            c2.metric("Cost Basis", f"${ct.total_buy_cost:,.2f}")
+            c3.metric("Realized P&L", f"{pnl_sign}${ct.realized_pnl:,.2f}")
+
+            rows = ct.rows.copy()
+            rows["date"] = pd.to_datetime(rows["date"], errors="coerce").dt.date
+            rows["quantity"] = rows["quantity"].map(
+                lambda v: f"{float(v):,.4f}".rstrip("0").rstrip(".")
+            )
+            rows["price"] = rows["price"].map(lambda v: f"${float(v):,.2f}" if v else "")
+            rows["amount"] = rows["amount"].map(lambda v: f"${float(v):,.2f}")
+            rows = rows.rename(columns={
+                "action": "Action",
+                "quantity": "Quantity",
+                "price": "Price",
+                "amount": "Amount",
+            })
+            st.dataframe(rows[["date", "Action", "Quantity", "Price", "Amount"]], hide_index=True)

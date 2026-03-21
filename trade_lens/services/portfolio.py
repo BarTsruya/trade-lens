@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections import deque
+from dataclasses import dataclass, field
 from typing import Optional
 
 import pandas as pd
@@ -9,23 +10,33 @@ _TRADE_ACTIONS = {"buy", "sell"}
 
 
 @dataclass
+class ClosedTrade:
+    """A sell action matched to its FIFO buy lots."""
+
+    symbol: str
+    paper_name: str
+    date_from: pd.Timestamp   # earliest matched buy date
+    date_to: pd.Timestamp     # sell date
+    # Table rows: buy lots (with qty_used) + the sell row, sorted by date
+    rows: pd.DataFrame        # columns: date, action, quantity, price, amount
+    total_buy_cost: float
+    total_proceeds: float
+    realized_pnl: float
+
+
+@dataclass
 class HoldingsSummary:
-    """Current holdings computed from the full buy/sell history."""
+    """Current holdings and closed trade history from the full buy/sell ledger."""
 
-    # All buy/sell rows across all time, sorted by date ascending
-    trades: pd.DataFrame
-
-    # Current open positions: one row per ticker with quantity > 0
-    # Columns: symbol, paper_name, quantity, avg_price, total_cost
-    holdings: pd.DataFrame
-
-    # Year options derived from trade dates (for history filtering)
-    year_options: list[int]
+    trades: pd.DataFrame       # all buy/sell rows, sorted by date ascending
+    holdings: pd.DataFrame     # open positions: symbol, paper_name, quantity, avg_price, total_cost
+    closed_trades: list[ClosedTrade]
+    year_options: list[int]    # derived from trade dates, newest first
 
 
 def _compute_holdings(trades: pd.DataFrame) -> pd.DataFrame:
     """Weighted-average cost basis over all buy/sell rows (sorted by date)."""
-    state: dict[str, dict] = {}  # symbol -> {quantity, avg_price, total_cost, paper_name}
+    state: dict[str, dict] = {}
 
     for _, row in trades.sort_values("date").iterrows():
         symbol = str(row.get("symbol", "") or "").strip()
@@ -42,7 +53,7 @@ def _compute_holdings(trades: pd.DataFrame) -> pd.DataFrame:
 
         s = state[symbol]
         if name:
-            s["paper_name"] = name  # keep most recent name
+            s["paper_name"] = name
 
         if action == "buy":
             new_qty = s["quantity"] + qty
@@ -76,8 +87,80 @@ def _compute_holdings(trades: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _compute_closed_trades(trades: pd.DataFrame) -> list[ClosedTrade]:
+    """Match sell actions to buy lots using FIFO per symbol."""
+    closed: list[ClosedTrade] = []
+
+    for symbol, group in trades.groupby("symbol", sort=False):
+        group = group.sort_values("date").reset_index(drop=True)
+        buy_queue: deque[dict] = deque()
+
+        for _, row in group.iterrows():
+            action = str(row.get("action_type", "") or "")
+            qty = abs(float(row.get("quantity") or 0.0))
+            price = float(row.get("execution_price") or 0.0)
+
+            if action == "buy":
+                buy_queue.append({
+                    "date": row["date"],
+                    "qty_remaining": qty,
+                    "price": price,
+                })
+            elif action == "sell" and buy_queue:
+                qty_to_sell = qty
+                matched_lots: list[dict] = []
+
+                while qty_to_sell > 1e-6 and buy_queue:
+                    lot = buy_queue[0]
+                    used = min(lot["qty_remaining"], qty_to_sell)
+                    matched_lots.append({
+                        "date": lot["date"],
+                        "action": "Buy",
+                        "quantity": used,
+                        "price": lot["price"],
+                        "amount": used * lot["price"],
+                    })
+                    lot["qty_remaining"] -= used
+                    qty_to_sell -= used
+                    if lot["qty_remaining"] < 1e-6:
+                        buy_queue.popleft()
+
+                if not matched_lots:
+                    continue
+
+                proceeds = abs(float(row.get("delta_usd") or 0.0))
+                total_buy_cost = sum(l["amount"] for l in matched_lots)
+
+                sell_entry = {
+                    "date": row["date"],
+                    "action": "Sell",
+                    "quantity": qty,
+                    "price": price,
+                    "amount": proceeds,
+                }
+
+                all_rows = pd.DataFrame(matched_lots + [sell_entry])
+                all_rows["date"] = pd.to_datetime(all_rows["date"], errors="coerce")
+                all_rows.sort_values("date", inplace=True)
+                all_rows.reset_index(drop=True, inplace=True)
+
+                closed.append(ClosedTrade(
+                    symbol=str(symbol),
+                    paper_name=str(row.get("paper_name", "") or ""),
+                    date_from=pd.to_datetime(matched_lots[0]["date"]),
+                    date_to=pd.to_datetime(row["date"]),
+                    rows=all_rows,
+                    total_buy_cost=total_buy_cost,
+                    total_proceeds=proceeds,
+                    realized_pnl=proceeds - total_buy_cost,
+                ))
+
+    closed.sort(key=lambda x: x.date_to, reverse=True)
+    return closed
+
+
 def get_holdings_summary(ledger: pd.DataFrame) -> HoldingsSummary:
-    """Compute current holdings from the full ledger's buy/sell history."""
+    """Compute current holdings and closed trades from the full ledger."""
     trades = ledger[ledger["action_type"].isin(_TRADE_ACTIONS)].copy()
     trades = trades.sort_values("date").reset_index(drop=True)
 
@@ -85,12 +168,14 @@ def get_holdings_summary(ledger: pd.DataFrame) -> HoldingsSummary:
     year_options = sorted(dates.dt.year.dropna().astype(int).unique().tolist(), reverse=True)
 
     holdings = _compute_holdings(trades)
+    closed_trades = _compute_closed_trades(trades)
 
     return HoldingsSummary(
         trades=trades,
         holdings=holdings,
+        closed_trades=closed_trades,
         year_options=year_options,
     )
 
 
-__all__ = ["HoldingsSummary", "get_holdings_summary"]
+__all__ = ["ClosedTrade", "HoldingsSummary", "get_holdings_summary"]
