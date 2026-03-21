@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
+from trade_lens import __version__
 
 # ---------------------------------------------------------------------------
 # Chart color palette — import this in every page to keep colors consistent
@@ -71,6 +72,7 @@ def inject_global_css() -> None:
         """,
         unsafe_allow_html=True,
     )
+    st.sidebar.caption(f"Trade Lens v{__version__}")
 
 
 def df_dates_to_date_only(df: pd.DataFrame) -> pd.DataFrame:
