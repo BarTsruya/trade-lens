@@ -72,6 +72,7 @@ HEBREW_ACTION_TYPE_MAP = {
     "קניה חול מטח": RawActionType.BUY.value,
     "מכירה חול מטח": RawActionType.SELL.value,
     "קניה שח": RawActionType.FX_CONVERSION.value,
+    "הפקדה": RawActionType.CASH_DEPOSIT.value,
     "העברה מזומן בשח": RawActionType.CASH_DEPOSIT.value,
     "דמי טפול מזומן בשח": RawActionType.ACCOUNT_MAINTENANCE_FEE.value,
     "משיכת ריבית מטח": RawActionType.DEBIT_INTEREST.value,
@@ -224,6 +225,11 @@ class IBILoader(BrokerLoader):
         conversion_mask = (df[action_col] == RawActionType.FX_CONVERSION.value) & (symbol_series == "99028")
         if quantity_col in df.columns:
             df.loc[conversion_mask, "delta_usd"] = df.loc[conversion_mask, quantity_col].fillna(0.0)
+
+        # USD cash deposit: "הפקדה" with symbol 99028 — amount is in raw_usd, no ILS movement
+        usd_deposit_mask = (df[action_col] == RawActionType.CASH_DEPOSIT.value) & (symbol_series == "99028")
+        df.loc[usd_deposit_mask, "delta_usd"] = df.loc[usd_deposit_mask, "raw_usd"]
+        df.loc[usd_deposit_mask, "delta_ils"] = 0.0
 
         out = pd.DataFrame(
             {
