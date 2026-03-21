@@ -1,5 +1,7 @@
 """Trade Lens: broker import + normalization + analytics."""
 
+__version__ = "0.1.0"
+
 from trade_lens.brokers.base import BrokerLoader
 from trade_lens.brokers.ibi import IBILoader, load_single, RawActionType, RawDataAttribute
 from trade_lens.brokers.registry import BROKERS, get_broker

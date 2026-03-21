@@ -6,12 +6,14 @@ import pandas as pd
 import streamlit as st
 
 from display_utils import format_signed_currency, inject_global_css
+from trade_lens import __version__
 from trade_lens.services.ingestion import ingest_files
 
 st.set_page_config(page_title="Home — Trade Lens", layout="wide")
 inject_global_css()
 st.title("Trade Lens")
-st.caption("Upload one or more IBI actions .xlsx exports, then use the sidebar to explore your data.")
+st.caption(f"v{__version__} · Upload one or more IBI actions .xlsx exports, then use the sidebar to explore your data.")
+st.sidebar.caption(f"Trade Lens v{__version__}")
 
 
 @st.cache_data(show_spinner=False)
