@@ -1,7 +1,6 @@
 # Trade Lens — Roadmap
 
 todo:
-- validate the avg win and loss precentages
 - present closed trades by monthes
 
 ---
@@ -24,10 +23,7 @@ todo:
 
 ## Trades (new tab)
 
-- [ ] Buy/sell blotter: date, symbol, side, qty, executed price, fees, delta USD
-- [ ] for each trade: write the total fees and tax to pay in case of profitable one
 - [ ] Filters: date range, symbol
-- [ ] Closed trade stats (FIFO): realized P&L, win rate, avg win/loss, turnover
 - [ ] Export to CSV
 
 ---
@@ -35,11 +31,8 @@ todo:
 ## Portfolio (new tab — Holdings + Performance)
 
 ### Holdings
-- [ ] Current quantity per symbol
-- [ ] Cost basis (avg buy price)
 - [ ] Live market price + current value
 - [ ] Unrealized P&L and day change
-- [ ] Allocation pie chart
 - [ ] Export to CSV
 
 ### Performance
