@@ -157,7 +157,7 @@ else:
             })
 
         summary_df = pd.DataFrame(summary_rows)
-        styled_df = summary_df.style.applymap(
+        styled_df = summary_df.style.map(
             lambda v: (
                 "color: #22c55e" if isinstance(v, str) and v.startswith("+")
                 else ("color: #ef4444" if isinstance(v, str) and v.startswith("-") else "")
