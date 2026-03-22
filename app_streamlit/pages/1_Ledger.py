@@ -29,10 +29,20 @@ min_date, max_date = full_view.date_bounds
 
 filter_col1, filter_col2, filter_col3 = st.columns(3)
 
-with filter_col1:
-    if st.button("Full range", key="ledger_filter_full_range") and all((min_date, max_date)):
+def _reset_date_range():
+    if all((min_date, max_date)):
         st.session_state["ledger_filter_date_range"] = (min_date, max_date)
-        st.rerun()
+
+def _reset_action_types():
+    for v in full_view.action_options:
+        st.session_state[f"ledger_action_{re.sub(r'[^a-zA-Z0-9]+', '_', v).strip('_').lower()}"] = False
+
+def _reset_symbols():
+    for v in full_view.symbol_options:
+        st.session_state[f"ledger_symbol_{re.sub(r'[^a-zA-Z0-9]+', '_', v).strip('_').lower()}"] = False
+
+with filter_col1:
+    st.button("Full range", key="ledger_filter_full_range", on_click=_reset_date_range)
     st.markdown("Date range")
     selected_date_range = st.date_input(
         "Date range",
@@ -42,10 +52,7 @@ with filter_col1:
     )
 
 with filter_col2:
-    if st.button("All types", key="ledger_filter_all_types"):
-        for v in full_view.action_options:
-            st.session_state[f"ledger_action_{re.sub(r'[^a-zA-Z0-9]+', '_', v).strip('_').lower()}"] = False
-        st.rerun()
+    st.button("All types", key="ledger_filter_all_types", on_click=_reset_action_types)
     st.markdown("Action type")
     selected_action_types: list[str] = []
     with st.expander("Select action types", expanded=False):
@@ -55,10 +62,7 @@ with filter_col2:
                 selected_action_types.append(v)
 
 with filter_col3:
-    if st.button("All symbols", key="ledger_filter_all_symbols"):
-        for v in full_view.symbol_options:
-            st.session_state[f"ledger_symbol_{re.sub(r'[^a-zA-Z0-9]+', '_', v).strip('_').lower()}"] = False
-        st.rerun()
+    st.button("All symbols", key="ledger_filter_all_symbols", on_click=_reset_symbols)
     st.markdown("Symbol")
     selected_symbols: list[str] = []
     with st.expander("Select symbols", expanded=False):
