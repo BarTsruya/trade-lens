@@ -137,7 +137,8 @@ def _compute_closed_trades(trades: pd.DataFrame) -> list[ClosedTrade]:
 
                 proceeds = abs(float(row.get("delta_usd") or 0.0))
                 sell_fees = abs(float(row.get("fees_usd") or 0.0))
-                estimated_tax = abs(float(row.get("estimated_capital_gains_tax") or 0.0))
+                _raw_tax = row.get("estimated_capital_gains_tax", 0.0)
+                estimated_tax = float(_raw_tax) if _raw_tax is not None and str(_raw_tax) not in ("nan", "") else 0.0
                 total_buy_cost = sum(l["amount"] for l in matched_lots)
                 total_fees = sum(l["fees_usd"] for l in matched_lots) + sell_fees
 

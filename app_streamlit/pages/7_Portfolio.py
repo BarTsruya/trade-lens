@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 
 from display_utils import (
     df_dates_to_date_only,
     format_signed_currency,
+    get_plotly_template,
     inject_global_css,
     order_table_newest_first_with_chrono_index,
 )
@@ -33,6 +35,18 @@ if summary.holdings.empty:
     st.info("No open positions found.")
 else:
     h = summary.holdings.copy()
+
+    fig = px.pie(
+        h,
+        values="total_cost",
+        names="symbol",
+        hole=0.4,
+        template=get_plotly_template(),
+    )
+    fig.update_traces(textinfo="label+percent", hovertemplate="%{label}<br>$%{value:,.2f}<extra></extra>")
+    fig.update_layout(title="Cost Basis Allocation", showlegend=False, margin=dict(t=40, b=20, l=20, r=20))
+    st.plotly_chart(fig, width="stretch")
+
     h["Ticker"] = h["symbol"]
     h["Name"] = h["paper_name"]
     h["Qty"] = h["quantity"].map(lambda v: f"{v:,.4f}".rstrip("0").rstrip("."))
@@ -179,4 +193,6 @@ else:
 
             fc1, fc2 = st.columns(2)
             fc1.metric("Total Fees", f"${ct.total_fees_usd:,.2f}")
-            fc2.metric("Est. Tax", f"₪{ct.total_estimated_tax:,.2f}")
+            tax_val = ct.total_estimated_tax
+            tax_str = f"-₪{abs(tax_val):,.2f}" if tax_val < 0 else f"₪{tax_val:,.2f}"
+            fc2.metric("Est. Tax", tax_str)

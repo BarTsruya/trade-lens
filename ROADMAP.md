@@ -1,5 +1,8 @@
 # Trade Lens — Roadmap
 
+todo:
+- sorting table by column doesnt work well
+
 ---
 
 ## Balance
