@@ -121,15 +121,12 @@ else:
     win_rate = len(wins) / len(pnls) * 100 if pnls else 0.0
     avg_win = sum(wins) / len(wins) if wins else 0.0
     avg_loss = sum(losses) / len(losses) if losses else 0.0
-    turnover = sum(ct.total_proceeds for ct in summary.closed_trades)
-
     pnl_sign = "+" if total_pnl >= 0 else "-"
-    c1, c2, c3, c4, c5 = st.columns(5)
+    c1, c2, c3, c4 = st.columns(4)
     c1.metric("Realized P&L", f"{pnl_sign}${abs(total_pnl):,.2f}")
     c2.metric("Win Rate", f"{win_rate:.0f}%  ({len(wins)}/{len(pnls)})")
     c3.metric("Avg Win", f"+${avg_win:,.2f}" if wins else "—")
     c4.metric("Avg Loss", f"-${abs(avg_loss):,.2f}" if losses else "—")
-    c5.metric("Turnover", f"${turnover:,.2f}")
 
     st.divider()
 
@@ -144,10 +141,26 @@ else:
             f"P&L: :{pnl_color}[{pnl_sign}${abs(ct.realized_pnl):,.2f}]",
             expanded=False,
         ):
+            buy_rows = ct.rows[ct.rows["action"] == "Buy"]
+            sell_rows = ct.rows[ct.rows["action"] == "Sell"]
+            total_qty = buy_rows["quantity"].sum()
+            avg_buy_price = ct.total_buy_cost / total_qty if total_qty > 0 else 0.0
+            sell_price = float(sell_rows.iloc[-1]["price"]) if not sell_rows.empty else 0.0
+            pct = (sell_price - avg_buy_price) / avg_buy_price * 100 if avg_buy_price > 0 else 0.0
+
+            def _price_card(label: str, price: str, sub_label: str, sub_value: str) -> str:
+                return f"""<div style="border:1px solid rgba(128,128,128,0.2);border-radius:10px;
+                    padding:1rem 1.25rem;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:1rem">
+                    <p style="font-size:0.8rem;font-weight:500;text-transform:uppercase;
+                        letter-spacing:0.03em;opacity:0.7;margin:0 0 0.3rem">{label}</p>
+                    <p style="font-size:1.6rem;font-weight:700;margin:0 0 0.4rem">{price}</p>
+                    <p style="font-size:0.85rem;opacity:0.6;margin:0">{sub_label}: {sub_value}</p>
+                </div>"""
+
             c1, c2, c3 = st.columns(3)
-            c1.metric("Proceeds", f"${ct.total_proceeds:,.2f}")
-            c2.metric("Cost Basis", f"${ct.total_buy_cost:,.2f}")
-            c3.metric("Realized P&L", f"{pnl_sign}${abs(ct.realized_pnl):,.2f}")
+            c1.markdown(_price_card("Avg Buy Price", f"${avg_buy_price:,.2f}", "Cost basis", f"${ct.total_buy_cost:,.2f}"), unsafe_allow_html=True)
+            c2.markdown(_price_card("Sell Price", f"${sell_price:,.2f}", "Proceeds", f"${ct.total_proceeds:,.2f}"), unsafe_allow_html=True)
+            c3.metric("Realized P&L", f"{pnl_sign}${abs(ct.realized_pnl):,.2f}", delta=f"{pct:+.1f}%")
 
             rows = ct.rows.copy()
             rows["date"] = pd.to_datetime(rows["date"], errors="coerce").dt.date
@@ -163,3 +176,7 @@ else:
                 "amount": "Amount",
             })
             st.dataframe(rows[["date", "Action", "Quantity", "Price", "Amount"]], hide_index=True)
+
+            fc1, fc2 = st.columns(2)
+            fc1.metric("Total Fees", f"${ct.total_fees_usd:,.2f}")
+            fc2.metric("Est. Tax", f"₪{ct.total_estimated_tax:,.2f}")

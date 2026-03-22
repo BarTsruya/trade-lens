@@ -22,6 +22,8 @@ class ClosedTrade:
     total_buy_cost: float
     total_proceeds: float
     realized_pnl: float
+    total_fees_usd: float
+    total_estimated_tax: float
 
 
 @dataclass
@@ -101,10 +103,13 @@ def _compute_closed_trades(trades: pd.DataFrame) -> list[ClosedTrade]:
             price = float(row.get("execution_price") or 0.0)
 
             if action == "buy":
+                fees = abs(float(row.get("fees_usd") or 0.0))
                 buy_queue.append({
                     "date": row["date"],
+                    "qty_total": qty,
                     "qty_remaining": qty,
                     "price": price,
+                    "fees_usd": fees,
                 })
             elif action == "sell" and buy_queue:
                 qty_to_sell = qty
@@ -113,12 +118,14 @@ def _compute_closed_trades(trades: pd.DataFrame) -> list[ClosedTrade]:
                 while qty_to_sell > 1e-6 and buy_queue:
                     lot = buy_queue[0]
                     used = min(lot["qty_remaining"], qty_to_sell)
+                    proportion = used / lot["qty_total"] if lot["qty_total"] > 0 else 0.0
                     matched_lots.append({
                         "date": lot["date"],
                         "action": "Buy",
                         "quantity": used,
                         "price": lot["price"],
                         "amount": used * lot["price"],
+                        "fees_usd": lot["fees_usd"] * proportion,
                     })
                     lot["qty_remaining"] -= used
                     qty_to_sell -= used
@@ -129,7 +136,10 @@ def _compute_closed_trades(trades: pd.DataFrame) -> list[ClosedTrade]:
                     continue
 
                 proceeds = abs(float(row.get("delta_usd") or 0.0))
+                sell_fees = abs(float(row.get("fees_usd") or 0.0))
+                estimated_tax = abs(float(row.get("estimated_capital_gains_tax") or 0.0))
                 total_buy_cost = sum(l["amount"] for l in matched_lots)
+                total_fees = sum(l["fees_usd"] for l in matched_lots) + sell_fees
 
                 sell_entry = {
                     "date": row["date"],
@@ -153,6 +163,8 @@ def _compute_closed_trades(trades: pd.DataFrame) -> list[ClosedTrade]:
                     total_buy_cost=total_buy_cost,
                     total_proceeds=proceeds,
                     realized_pnl=proceeds - total_buy_cost,
+                    total_fees_usd=total_fees,
+                    total_estimated_tax=estimated_tax,
                 ))
 
     closed.sort(key=lambda x: x.date_to, reverse=True)
