@@ -97,13 +97,22 @@ else:
     )
     all_ct_symbols = sorted({ct.symbol for ct in summary.closed_trades})
 
-    f1, f2 = st.columns(2)
+    f1, f2, f3 = st.columns(3)
     with f1:
         year_opts = ["All time"] + close_years
         selected_ct_year = st.selectbox("Close year", options=year_opts, index=0, key="ct_year")
     with f2:
         ticker_opts = ["All tickers"] + all_ct_symbols
         selected_ct_ticker = st.selectbox("Ticker", options=ticker_opts, index=0, key="ct_ticker")
+    with f3:
+        sort_opts = [
+            "Default (descending dates)",
+            "P&L amount ↑",
+            "P&L amount ↓",
+            "P&L % ↑",
+            "P&L % ↓",
+        ]
+        selected_ct_sort = st.selectbox("Sort by", options=sort_opts, index=0, key="ct_sort")
 
     filtered_cts = [
         ct for ct in summary.closed_trades
@@ -162,17 +171,34 @@ else:
                 "Avg Buy":     avg_buy_price,
                 "Sell Price":  sell_price,
                 "P&L":         pnl_str,
+                "_pnl_value":  ct.realized_pnl,
+                "_pnl_pct":    pnl_pct,
             })
 
         summary_df = pd.DataFrame(summary_rows)
-        styled_df = summary_df.style.map(
+
+        _sort_map = {
+            "P&L amount ↑": ("_pnl_value", True),
+            "P&L amount ↓": ("_pnl_value", False),
+            "P&L % ↑":      ("_pnl_pct",   True),
+            "P&L % ↓":      ("_pnl_pct",   False),
+        }
+        if selected_ct_sort in _sort_map:
+            _col, _asc = _sort_map[selected_ct_sort]
+            sorted_order = summary_df[_col].argsort().tolist() if _asc else summary_df[_col].argsort()[::-1].tolist()
+            summary_df = summary_df.iloc[sorted_order].reset_index(drop=True)
+            filtered_cts = [filtered_cts[i] for i in sorted_order]
+
+        st.caption("Select a row to view trade detail.")
+
+        display_df = summary_df.drop(columns=["_pnl_value", "_pnl_pct"])
+        styled_df = display_df.style.map(
             lambda v: (
                 "color: #22c55e" if isinstance(v, str) and v.startswith("+")
                 else ("color: #ef4444" if isinstance(v, str) and v.startswith("-") else "")
             ),
             subset=["P&L"],
         )
-        st.caption("Select a row to view trade detail.")
         event = st.dataframe(
             styled_df,
             column_config={
