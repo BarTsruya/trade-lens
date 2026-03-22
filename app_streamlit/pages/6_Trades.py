@@ -143,29 +143,34 @@ else:
             date_from = pd.to_datetime(ct.date_from)
             date_to   = pd.to_datetime(ct.date_to)
             hold_days = (date_to - date_from).days if pd.notna(date_from) and pd.notna(date_to) else None
+            sign = "+" if ct.realized_pnl >= 0 else "-"
+            arrow = "↑" if ct.realized_pnl >= 0 else "↓"
+            pnl_str = f"{sign}${abs(ct.realized_pnl):,.2f} ({arrow}{abs(pnl_pct):.1f}%)"
             summary_rows.append({
                 "Ticker":      ct.symbol,
                 "Close Date":  date_to.date() if pd.notna(date_to) else None,
-                "Hold (days)": hold_days,
+                "Days Held":   hold_days,
+                "Buy Cost":    ct.total_buy_cost,
                 "Avg Buy":     avg_buy_price,
                 "Sell Price":  sell_price,
-                "Buy Cost":    ct.total_buy_cost,
-                "Proceeds":    ct.total_proceeds,
-                "P&L":         ct.realized_pnl,
-                "P&L %":       pnl_pct,
+                "P&L":         pnl_str,
             })
 
         summary_df = pd.DataFrame(summary_rows)
+        styled_df = summary_df.style.applymap(
+            lambda v: (
+                "color: #22c55e" if isinstance(v, str) and v.startswith("+")
+                else ("color: #ef4444" if isinstance(v, str) and v.startswith("-") else "")
+            ),
+            subset=["P&L"],
+        )
         st.caption("Select a row to view trade detail.")
         event = st.dataframe(
-            summary_df,
+            styled_df,
             column_config={
+                "Buy Cost":   st.column_config.NumberColumn("Buy Cost",   format="$%.2f"),
                 "Avg Buy":    st.column_config.NumberColumn("Avg Buy",    format="$%.2f"),
                 "Sell Price": st.column_config.NumberColumn("Sell Price", format="$%.2f"),
-                "Buy Cost":   st.column_config.NumberColumn("Buy Cost",   format="$%.2f"),
-                "Proceeds":   st.column_config.NumberColumn("Proceeds",   format="$%.2f"),
-                "P&L":        st.column_config.NumberColumn("P&L",        format="$%.2f"),
-                "P&L %":      st.column_config.NumberColumn("P&L %",      format="%.1f"),
             },
             hide_index=True,
             width="stretch",
