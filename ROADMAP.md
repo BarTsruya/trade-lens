@@ -1,7 +1,6 @@
 # Trade Lens — Roadmap
 
 todo:
-- present closed trades by monthes
 
 ---
 
@@ -17,14 +16,6 @@ todo:
 ## Fees
 
 - [ ] Show conversion spread as an implicit fee (per conversion + monthly aggregation)
-- [ ] Download fees table as CSV
-
----
-
-## Trades (new tab)
-
-- [ ] Filters: date range, symbol
-- [ ] Export to CSV
 
 ---
 
@@ -33,7 +24,7 @@ todo:
 ### Holdings
 - [ ] Live market price + current value
 - [ ] Unrealized P&L and day change
-- [ ] Export to CSV
+
 
 ### Performance
 - [ ] Portfolio NAV over time (daily/weekly/monthly resolution)
@@ -47,8 +38,7 @@ todo:
 ## General / Quality
 
 - [ ] Remember filter selections when switching tabs
-- [ ] Fix "full range" button warning in charts
-- [ ] Persist loaded data across browser refresh (cache to disk)
+- [ ] Export to CSV everywhere it could be useful
 
 ---
 
