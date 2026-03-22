@@ -112,7 +112,13 @@ else:
     ]
 
     if not filtered_cts:
-        st.info("No closed trades for this year.")
+        parts = []
+        if selected_ct_year != "All time":
+            parts.append(str(selected_ct_year))
+        if selected_ct_ticker != "All tickers":
+            parts.append(selected_ct_ticker)
+        suffix = f" for {' · '.join(parts)}" if parts else ""
+        st.info(f"No closed trades{suffix}.")
     else:
         # --- Summary metrics ---
         win_cts  = [ct for ct in filtered_cts if ct.realized_pnl > 0]
