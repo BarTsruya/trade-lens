@@ -90,25 +90,18 @@ view = (
 )
 filtered = view.filtered
 
-f_dates = pd.to_datetime(filtered.get("date"), errors="coerce")
+_label = "<p style='font-size:0.85rem;opacity:0.6;margin:0'>{}</p>"
 c1, c2, c3 = st.columns(3)
-c1.metric("Rows (filtered)", f"{len(filtered):,}")
-c2.metric("Date From", "N/A" if f_dates.empty or f_dates.isna().all() else str(f_dates.min().date()))
-c3.metric("Date To",   "N/A" if f_dates.empty or f_dates.isna().all() else str(f_dates.max().date()))
+c1.markdown(_label.format("Filtered rows amount") + f"{len(filtered):,}", unsafe_allow_html=True)
+c2.markdown(_label.format("Chosen types") + (", ".join(selected_action_types) if selected_action_types else "All"), unsafe_allow_html=True)
+c3.markdown(_label.format("Chosen symbols") + (", ".join(selected_symbols) if selected_symbols else "All"), unsafe_allow_html=True)
+
+st.markdown("<div style='margin-bottom:1.5rem'></div>", unsafe_allow_html=True)
 
 display_df = df_dates_to_date_only(filtered)
 for col in ("execution_price", "ledger_row_id", "_source_order", "_date_desc", "expected_ils_balance"):
     if col in display_df.columns:
         display_df = display_df.drop(columns=[col])
-csv = (
-    filtered.drop(
-        columns=["_source_order", "_date_desc", "_display_idx", "expected_ils_balance", "ledger_row_id"],
-        errors="ignore",
-    )
-    .to_csv(index=False)
-    .encode("utf-8")
-)
-st.download_button("Download filtered ledger (CSV)", data=csv, file_name="ledger_filtered.csv", mime="text/csv")
 
 display_df = order_table_newest_first_with_chrono_index(display_df, "date")
 if "_display_idx" in display_df.columns:
