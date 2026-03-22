@@ -29,6 +29,9 @@ min_date, max_date = full_view.date_bounds
 
 filter_col1, filter_col2, filter_col3 = st.columns(3)
 
+if "ledger_filter_date_range" not in st.session_state:
+    st.session_state["ledger_filter_date_range"] = (min_date, max_date) if all((min_date, max_date)) else ()
+
 def _reset_date_range():
     if all((min_date, max_date)):
         st.session_state["ledger_filter_date_range"] = (min_date, max_date)
@@ -46,7 +49,6 @@ with filter_col1:
     st.markdown("Date range")
     selected_date_range = st.date_input(
         "Date range",
-        value=(min_date, max_date) if all((min_date, max_date)) else (),
         key="ledger_filter_date_range",
         label_visibility="collapsed",
     )
