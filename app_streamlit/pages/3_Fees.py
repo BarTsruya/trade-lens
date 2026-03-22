@@ -57,12 +57,12 @@ if not fees.trading_by_year.empty:
 
     if not fees.trading_by_ticker.empty:
         ticker_df = fees.trading_by_ticker.copy()
-        ticker_df["Total"] = "$" + ticker_df["amount_value"].map(lambda v: f"{v:,.2f}")
         if "symbol" in fees.trading_by_year.columns:
             action_counts = fees.trading_by_year.groupby("symbol").size().rename("Actions").reset_index()
             ticker_df = ticker_df.merge(action_counts, on="symbol", how="left")
         st.dataframe(
-            ticker_df[["symbol", "Actions", "Total"]].rename(columns={"symbol": "Ticker"}),
+            ticker_df[["symbol", "Actions", "amount_value"]].rename(columns={"symbol": "Ticker", "amount_value": "Total"}),
+            column_config={"Total": st.column_config.NumberColumn("Total", format="$%.2f")},
             hide_index=True,
         )
 

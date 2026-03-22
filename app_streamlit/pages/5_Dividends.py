@@ -73,10 +73,13 @@ if not div.by_ticker.empty:
 # ---------------------------------------------------------------------------
 
 st.markdown("**Transactions**")
-tx_cols = [c for c in ("date", "paper_name", "amount") if c in div.deposit_by_year.columns]
+tx_cols = [c for c in ("date", "paper_name", "amount_value") if c in div.deposit_by_year.columns]
 tx_df = df_dates_to_date_only(div.deposit_by_year[tx_cols].copy())
 tx_df = order_table_newest_first_with_chrono_index(tx_df, "date")
 if "paper_name" in tx_df.columns:
     tx_df["paper_name"] = tx_df["paper_name"].str.split("/").str[-1].str.strip().str.split().str[0]
     tx_df = tx_df.rename(columns={"paper_name": "Ticker"})
-st.dataframe(tx_df, width="stretch", hide_index=True)
+tx_df = tx_df.rename(columns={"amount_value": "Amount"})
+st.dataframe(tx_df, width="stretch", hide_index=True, column_config={
+    "Amount": st.column_config.NumberColumn("Amount", format="$%.2f"),
+})

@@ -8,7 +8,6 @@ import streamlit as st
 from display_utils import (
     CHART_COLORS,
     df_dates_to_date_only,
-    format_signed_currency,
     get_plotly_template,
     inject_global_css,
     order_table_newest_first_with_chrono_index,
@@ -113,10 +112,6 @@ else:
 
     # Transactions table
     display_df = tax.capital_gains_by_year.drop(columns=["month"], errors="ignore").copy()
-    for col in ("tax_shield_state", "tax_payable_state", "total_annual_tax"):
-        if col in display_df.columns:
-            display_df[col] = display_df[col].map(lambda v: format_signed_currency(v, "₪"))
-
     display_df = order_table_newest_first_with_chrono_index(display_df, "date")
     if "_display_idx" in display_df.columns:
         display_df = display_df.drop(columns=["_display_idx"])
@@ -124,7 +119,8 @@ else:
         set(display_df.index[display_df["_annual_year_end"].fillna(False)].tolist())
         if "_annual_year_end" in display_df.columns else set()
     )
-    display_df = display_df.drop(columns=["_annual_year_end", "amount_value"], errors="ignore")
+    display_df = display_df.drop(columns=["_annual_year_end", "amount"], errors="ignore")
+    display_df = display_df.rename(columns={"amount_value": "amount"})
     display_df = df_dates_to_date_only(display_df)
 
     def _style(row: pd.Series) -> list[str]:
@@ -141,7 +137,17 @@ else:
             styles[ann_i] = "font-weight: 700;"
         return styles
 
-    st.dataframe(display_df.style.apply(_style, axis=1), width="stretch", hide_index=False)
+    st.dataframe(
+        display_df.style.apply(_style, axis=1),
+        column_config={
+            "amount": st.column_config.NumberColumn("amount", format="₪%.2f"),
+            "tax_shield_state": st.column_config.NumberColumn("tax_shield_state", format="₪%.2f"),
+            "tax_payable_state": st.column_config.NumberColumn("tax_payable_state", format="₪%.2f"),
+            "total_annual_tax": st.column_config.NumberColumn("total_annual_tax", format="₪%.2f"),
+        },
+        width="stretch",
+        hide_index=False,
+    )
 
 # ---------------------------------------------------------------------------
 # Dividend Taxes
@@ -179,9 +185,12 @@ else:
         st.dataframe(ticker_summary, hide_index=True)
 
     st.markdown("**Transactions**")
-    tx_cols = [c for c in ("date", "paper_name", "amount") if c in tax.dividend_tax_by_year.columns]
+    tx_cols = [c for c in ("date", "paper_name", "amount_value") if c in tax.dividend_tax_by_year.columns]
     tx_df = df_dates_to_date_only(tax.dividend_tax_by_year[tx_cols].copy())
     if "paper_name" in tx_df.columns:
         tx_df["paper_name"] = tx_df["paper_name"].str.split("/").str[-1].str.strip().str.split().str[0]
         tx_df = tx_df.rename(columns={"paper_name": "Ticker"})
-    st.dataframe(tx_df, width="stretch", hide_index=True)
+    tx_df = tx_df.rename(columns={"amount_value": "Amount"})
+    st.dataframe(tx_df, width="stretch", hide_index=True, column_config={
+        "Amount": st.column_config.NumberColumn("Amount", format="$%.2f"),
+    })

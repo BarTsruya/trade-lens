@@ -6,7 +6,6 @@ import streamlit as st
 
 from display_utils import (
     df_dates_to_date_only,
-    format_signed_currency,
     get_plotly_template,
     inject_global_css,
     order_table_newest_first_with_chrono_index,
@@ -47,14 +46,20 @@ else:
     fig.update_layout(title="Cost Basis Allocation", showlegend=False, margin=dict(t=40, b=20, l=20, r=20))
     st.plotly_chart(fig, width="stretch")
 
-    h["Ticker"] = h["symbol"]
-    h["Name"] = h["paper_name"]
-    h["Qty"] = h["quantity"].map(lambda v: f"{v:,.4f}".rstrip("0").rstrip("."))
-    h["Avg Buy Price"] = h["avg_price"].map(lambda v: f"${v:,.2f}" if v else "")
-    h["Cost Basis"] = h["total_cost"].map(lambda v: f"${v:,.2f}" if v else "")
-
+    display_h = h[["symbol", "paper_name", "quantity", "avg_price", "total_cost"]].rename(columns={
+        "symbol": "Ticker",
+        "paper_name": "Name",
+        "quantity": "Qty",
+        "avg_price": "Avg Buy Price",
+        "total_cost": "Cost Basis",
+    })
     st.dataframe(
-        h[["Ticker", "Name", "Qty", "Avg Buy Price", "Cost Basis"]],
+        display_h,
+        column_config={
+            "Qty": st.column_config.NumberColumn(format="%.4g"),
+            "Avg Buy Price": st.column_config.NumberColumn(format="$%.2f"),
+            "Cost Basis": st.column_config.NumberColumn(format="$%.2f"),
+        },
         hide_index=True,
         width="stretch",
     )
@@ -85,19 +90,9 @@ else:
     display_df = df_dates_to_date_only(trades[display_cols].copy())
 
     if "delta_usd" in display_df.columns:
-        display_df["delta_usd"] = display_df["delta_usd"].map(
-            lambda v: f"${abs(float(v)):,.2f}" if pd.notna(v) else ""
-        )
-    if "fees_usd" in display_df.columns:
-        display_df["fees_usd"] = display_df["fees_usd"].map(lambda v: format_signed_currency(v, "$"))
-    if "execution_price" in display_df.columns:
-        display_df["execution_price"] = display_df["execution_price"].map(
-            lambda v: f"${float(v):,.2f}" if pd.notna(v) and float(v) != 0 else ""
-        )
+        display_df["delta_usd"] = pd.to_numeric(display_df["delta_usd"], errors="coerce").abs()
     if "quantity" in display_df.columns:
-        display_df["quantity"] = display_df["quantity"].map(
-            lambda v: f"{abs(float(v)):,.4f}".rstrip("0").rstrip(".") if pd.notna(v) and float(v) != 0 else ""
-        )
+        display_df["quantity"] = pd.to_numeric(display_df["quantity"], errors="coerce").abs()
 
     display_df = display_df.rename(columns={
         "action_type": "Action",
@@ -115,7 +110,17 @@ else:
     label = f"trades_{selected_year}.csv" if selected_year != "All time" else "trades_all.csv"
     st.download_button("Download CSV", data=csv, file_name=label, mime="text/csv")
 
-    st.dataframe(display_df, width="stretch", hide_index=False)
+    st.dataframe(
+        display_df,
+        column_config={
+            "Quantity": st.column_config.NumberColumn("Quantity", format="%.4g"),
+            "Price":    st.column_config.NumberColumn("Price",    format="$%.2f"),
+            "Amount":   st.column_config.NumberColumn("Amount",   format="$%.2f"),
+            "Fees":     st.column_config.NumberColumn("Fees",     format="$%.2f"),
+        },
+        width="stretch",
+        hide_index=False,
+    )
 
 st.divider()
 
@@ -128,19 +133,24 @@ st.subheader("Closed Trades")
 if not summary.closed_trades:
     st.info("No closed trades found.")
 else:
+    win_cts = [ct for ct in summary.closed_trades if ct.realized_pnl > 0]
+    loss_cts = [ct for ct in summary.closed_trades if ct.realized_pnl < 0]
     pnls = [ct.realized_pnl for ct in summary.closed_trades]
-    wins = [p for p in pnls if p > 0]
-    losses = [p for p in pnls if p < 0]
     total_pnl = sum(pnls)
-    win_rate = len(wins) / len(pnls) * 100 if pnls else 0.0
-    avg_win = sum(wins) / len(wins) if wins else 0.0
-    avg_loss = sum(losses) / len(losses) if losses else 0.0
+    win_rate = len(win_cts) / len(pnls) * 100 if pnls else 0.0
+
+    avg_win = sum(ct.realized_pnl for ct in win_cts) / len(win_cts) if win_cts else 0.0
+    avg_win_pct = sum(ct.realized_pnl / ct.total_buy_cost * 100 for ct in win_cts if ct.total_buy_cost) / len(win_cts) if win_cts else 0.0
+
+    avg_loss = sum(ct.realized_pnl for ct in loss_cts) / len(loss_cts) if loss_cts else 0.0
+    avg_loss_pct = sum(ct.realized_pnl / ct.total_buy_cost * 100 for ct in loss_cts if ct.total_buy_cost) / len(loss_cts) if loss_cts else 0.0
+
     pnl_sign = "+" if total_pnl >= 0 else "-"
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Realized P&L", f"{pnl_sign}${abs(total_pnl):,.2f}")
-    c2.metric("Win Rate", f"{win_rate:.0f}%  ({len(wins)}/{len(pnls)})")
-    c3.metric("Avg Win", f"+${avg_win:,.2f}" if wins else "—")
-    c4.metric("Avg Loss", f"-${abs(avg_loss):,.2f}" if losses else "—")
+    c2.metric("Win Rate", f"{win_rate:.0f}%  ({len(win_cts)}/{len(pnls)})")
+    c3.metric("Avg Win", f"+${avg_win:,.2f}  (+{avg_win_pct:.1f}%)" if win_cts else "—")
+    c4.metric("Avg Loss", f"-${abs(avg_loss):,.2f}  ({avg_loss_pct:.1f}%)" if loss_cts else "—")
 
     st.divider()
 
@@ -178,18 +188,16 @@ else:
 
             rows = ct.rows.copy()
             rows["date"] = pd.to_datetime(rows["date"], errors="coerce").dt.date
-            rows["quantity"] = rows["quantity"].map(
-                lambda v: f"{float(v):,.4f}".rstrip("0").rstrip(".")
+            rows = rows.rename(columns={"action": "Action", "quantity": "Quantity", "price": "Price", "amount": "Amount"})
+            st.dataframe(
+                rows[["date", "Action", "Quantity", "Price", "Amount"]],
+                column_config={
+                    "Quantity": st.column_config.NumberColumn("Quantity", format="%.4g"),
+                    "Price":    st.column_config.NumberColumn("Price",    format="$%.2f"),
+                    "Amount":   st.column_config.NumberColumn("Amount",   format="$%.2f"),
+                },
+                hide_index=True,
             )
-            rows["price"] = rows["price"].map(lambda v: f"${float(v):,.2f}" if v else "")
-            rows["amount"] = rows["amount"].map(lambda v: f"${float(v):,.2f}")
-            rows = rows.rename(columns={
-                "action": "Action",
-                "quantity": "Quantity",
-                "price": "Price",
-                "amount": "Amount",
-            })
-            st.dataframe(rows[["date", "Action", "Quantity", "Price", "Amount"]], hide_index=True)
 
             fc1, fc2 = st.columns(2)
             fc1.metric("Total Fees", f"${ct.total_fees_usd:,.2f}")

@@ -1,7 +1,8 @@
 # Trade Lens — Roadmap
 
 todo:
-- sorting table by column doesnt work well
+- validate the avg win and loss precentages
+- present closed trades by monthes
 
 ---
 

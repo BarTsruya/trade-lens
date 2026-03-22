@@ -7,7 +7,6 @@ import streamlit as st
 
 from display_utils import (
     df_dates_to_date_only,
-    format_signed_currency,
     inject_global_css,
     order_table_newest_first_with_chrono_index,
 )
@@ -95,16 +94,6 @@ display_df = df_dates_to_date_only(filtered)
 for col in ("execution_price", "ledger_row_id", "_source_order", "_date_desc", "expected_ils_balance"):
     if col in display_df.columns:
         display_df = display_df.drop(columns=[col])
-for col in ("delta_usd", "fees_usd"):
-    if col in display_df.columns:
-        display_df[col] = display_df[col].map(lambda v: format_signed_currency(v, "$"))
-if "delta_ils" in display_df.columns:
-    display_df["delta_ils"] = display_df["delta_ils"].map(lambda v: format_signed_currency(v, "₪"))
-if "estimated_capital_gains_tax" in display_df.columns:
-    display_df["estimated_capital_gains_tax"] = display_df["estimated_capital_gains_tax"].map(
-        lambda v: format_signed_currency(v, "₪")
-    )
-
 csv = (
     filtered.drop(
         columns=["_source_order", "_date_desc", "_display_idx", "expected_ils_balance", "ledger_row_id"],
@@ -118,4 +107,14 @@ st.download_button("Download filtered ledger (CSV)", data=csv, file_name="ledger
 display_df = order_table_newest_first_with_chrono_index(display_df, "date")
 if "_display_idx" in display_df.columns:
     display_df = display_df.drop(columns=["_display_idx"])
-st.dataframe(display_df, width="stretch", hide_index=False)
+st.dataframe(
+    display_df,
+    column_config={
+        "delta_usd": st.column_config.NumberColumn("delta_usd", format="$%.2f"),
+        "fees_usd": st.column_config.NumberColumn("fees_usd", format="$%.2f"),
+        "delta_ils": st.column_config.NumberColumn("delta_ils", format="₪%.2f"),
+        "estimated_capital_gains_tax": st.column_config.NumberColumn("estimated_capital_gains_tax", format="₪%.2f"),
+    },
+    width="stretch",
+    hide_index=False,
+)

@@ -8,7 +8,6 @@ from plotly.subplots import make_subplots
 from display_utils import (
     CHART_COLORS,
     df_dates_to_date_only,
-    format_signed_currency,
     get_plotly_template,
     inject_global_css,
     order_table_newest_first_with_chrono_index,
@@ -43,15 +42,20 @@ bal_c1.metric("Current USD Balance", f"${_current_usd:,.2f}")
 bal_c2.metric("Current ILS Balance", f"₪{_current_ils:,.2f}")
 
 table_df = df_dates_to_date_only(balance.timeline).drop(columns=["expected_ils_balance"], errors="ignore")
-for col in ("usd_delta", "fees_usd", "usd_balance"):
-    if col in table_df.columns:
-        table_df[col] = table_df[col].map(lambda v: format_signed_currency(v, "$"))
-for col in ("ils_delta", "ils_balance"):
-    if col in table_df.columns:
-        table_df[col] = table_df[col].map(lambda v: format_signed_currency(v, "₪"))
 table_df = order_table_newest_first_with_chrono_index(table_df, "date")
 table_df = table_df.drop(columns=["_display_idx", "action_type"], errors="ignore")
-st.dataframe(table_df, width="stretch", hide_index=False)
+st.dataframe(
+    table_df,
+    column_config={
+        "usd_delta":  st.column_config.NumberColumn("usd_delta",  format="$%.2f"),
+        "fees_usd":   st.column_config.NumberColumn("fees_usd",   format="$%.2f"),
+        "usd_balance": st.column_config.NumberColumn("usd_balance", format="$%.2f"),
+        "ils_delta":  st.column_config.NumberColumn("ils_delta",  format="₪%.2f"),
+        "ils_balance": st.column_config.NumberColumn("ils_balance", format="₪%.2f"),
+    },
+    width="stretch",
+    hide_index=False,
+)
 
 # ---------------------------------------------------------------------------
 # FX conversions
@@ -105,8 +109,16 @@ if not chart_df.empty:
     c2.metric("Total ILS Converted",    f"₪{chart_df['delta_ils_abs'].sum():,.2f}")
     c3.metric("Total USD Produced",     f"${chart_df['delta_usd_abs'].sum():,.2f}")
 
-fx["ILS Amount"] = fx["delta_ils"].map(lambda v: format_signed_currency(abs(float(v)) if pd.notna(pd.to_numeric(v, errors="coerce")) else v, "₪"))
-fx["USD Amount"] = fx["delta_usd"].map(lambda v: format_signed_currency(v, "$"))
+fx["ILS Amount"] = pd.to_numeric(fx["delta_ils"], errors="coerce").abs()
+fx["USD Amount"] = pd.to_numeric(fx["delta_usd"], errors="coerce")
 fx["Rate"] = fx["rate_label"]
 fx_display = order_table_newest_first_with_chrono_index(fx[["date", "USD Amount", "ILS Amount", "Rate"]].copy(), "date")
-st.dataframe(fx_display, width="stretch", hide_index=True)
+st.dataframe(
+    fx_display,
+    column_config={
+        "USD Amount": st.column_config.NumberColumn("USD Amount", format="$%.2f"),
+        "ILS Amount": st.column_config.NumberColumn("ILS Amount", format="₪%.2f"),
+    },
+    width="stretch",
+    hide_index=True,
+)
