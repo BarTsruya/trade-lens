@@ -31,9 +31,6 @@ summary = get_holdings_summary(ledger)
 def _show_trade_detail(ct) -> None:
     date_from = pd.to_datetime(ct.date_from).strftime("%b %d, %Y") if pd.notna(ct.date_from) else "?"
     date_to   = pd.to_datetime(ct.date_to).strftime("%b %d, %Y")   if pd.notna(ct.date_to)   else "?"
-    pnl_sign  = "+" if ct.realized_pnl >= 0 else "-"
-    pnl_color = "green" if ct.realized_pnl >= 0 else "red"
-
     buy_rows  = ct.rows[ct.rows["action"] == "Buy"]
     sell_rows = ct.rows[ct.rows["action"] == "Sell"]
     total_qty     = buy_rows["quantity"].sum()
@@ -41,7 +38,12 @@ def _show_trade_detail(ct) -> None:
     sell_price    = float(sell_rows.iloc[-1]["price"]) if not sell_rows.empty else 0.0
     pct = (sell_price - avg_buy_price) / avg_buy_price * 100 if avg_buy_price > 0 else 0.0
 
-    st.markdown(f"**{ct.symbol}** &nbsp; :{pnl_color}[{pnl_sign}${abs(ct.realized_pnl):,.2f}  ({pct:+.1f}%)]")
+    pnl_sign  = "+" if ct.realized_pnl >= 0 else "-"
+    pct_arrow = "↑" if pct >= 0 else "↓"
+    pnl_color = "green" if ct.realized_pnl >= 0 else "red"
+    pnl_str   = f"{pnl_sign}${abs(ct.realized_pnl):,.2f} ({pct_arrow}{abs(pct):.1f}%)"
+
+    st.markdown(f"**{ct.symbol}** &nbsp; :{pnl_color}[{pnl_str}]")
     st.caption(f"{date_from} → {date_to}")
 
     def _price_card(label: str, price: str, sub_label: str, sub_value: str) -> str:
@@ -126,10 +128,10 @@ else:
 
         pnl_sign = "+" if total_pnl >= 0 else "-"
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Realized P&L", f"{pnl_sign}${abs(total_pnl):,.2f}")
+        c1.metric("Total Realized P&L", f"{pnl_sign}${abs(total_pnl):,.2f}")
         c2.metric("Win Rate", f"{win_rate:.0f}%  ({len(win_cts)}/{len(pnls)})")
-        c3.metric("Avg Win",  f"+${avg_win:,.2f}  (+{avg_win_pct:.1f}%)" if win_cts else "—")
-        c4.metric("Avg Loss", f"-${abs(avg_loss):,.2f}  ({avg_loss_pct:.1f}%)" if loss_cts else "—")
+        c3.metric("Avg Win %",  f"+{avg_win_pct:.1f}%" if win_cts else "—")
+        c4.metric("Avg Loss %", f"-{abs(avg_loss_pct):.1f}%" if loss_cts else "—")
 
         # --- Summary table ---
         summary_rows = []
