@@ -121,6 +121,7 @@ else:
         yaxis_title="Cumulative Deposits",
         height=280,
         legend_title_text="Currency",
+        margin=dict(l=60, r=20, t=20, b=40),
     )
     st.plotly_chart(fig, width="stretch")
 
