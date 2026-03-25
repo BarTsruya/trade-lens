@@ -2,6 +2,8 @@
 
 todo:
 - [ ] check of the the 1.51$ missing in USD balance
+- [ ] design a home page that linked to all sub pages (boxes view)
+- [ ] change tabs order (portfolio at top, ledger at bottom)
 
 ---
 
@@ -31,7 +33,7 @@ todo:
 - [ ] Overlay deposits/withdrawals on NAV chart
 - [ ] Return metrics: time-weighted return (TWR), money-weighted return (XIRR)
 - [ ] Compare nominal gain vs real gain (inflation-adjusted)
-- [ ] add final summary of cash deposits sum VS holdings gain sum + balances sum (how much the money realy changed).
+- [ ] add final summary of cash deposits sum VS holdings gain sum + balances sum (how is the money realy changed)
 
 ---
 
