@@ -8,7 +8,6 @@ todo:
 ## Balance
 
 - [ ] Add expected ILS balance column (from broker export) and highlight mismatches
-- [ ] Add deposits section or just a filter by action in balance table
 - [ ] Fetch live USD/ILS rate and estimate conversion spread (IBI uses ~0.7% margin)
 - [ ] Show per-conversion: executed rate, reference rate, spread %, implied cost
 

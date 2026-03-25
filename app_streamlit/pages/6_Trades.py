@@ -232,7 +232,7 @@ st.divider()
 # Trade History
 # ---------------------------------------------------------------------------
 
-st.subheader("Trade History")
+st.subheader("Buy/Sell History")
 
 if not summary.year_options:
     st.info("No buy/sell transactions found.")

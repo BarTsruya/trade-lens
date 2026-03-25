@@ -58,6 +58,82 @@ st.dataframe(
 )
 
 # ---------------------------------------------------------------------------
+# Cash Deposits
+# ---------------------------------------------------------------------------
+
+st.divider()
+st.subheader("Cash Deposits")
+st.caption("External cash deposited into your account over time.")
+
+deposits_df = balance.timeline[balance.timeline["action_type"] == "cash_deposit"].copy()
+deposits_df["date"] = pd.to_datetime(deposits_df["date"], errors="coerce")
+deposits_df["usd_delta"] = pd.to_numeric(deposits_df["usd_delta"], errors="coerce").fillna(0.0)
+deposits_df["ils_delta"] = pd.to_numeric(deposits_df["ils_delta"], errors="coerce").fillna(0.0)
+
+if deposits_df.empty:
+    st.info("No cash deposits found.")
+else:
+    total_usd = deposits_df["usd_delta"].sum()
+    total_ils = deposits_df["ils_delta"].sum()
+
+    d1, d2, d3 = st.columns(3)
+    d1.metric("Total USD Deposited", f"${total_usd:,.2f}")
+    d2.metric("Total ILS Deposited", f"₪{total_ils:,.2f}")
+    d3.metric("Number of Deposits",  str(len(deposits_df)))
+
+    _usd = deposits_df[deposits_df["usd_delta"] != 0].sort_values("date")[["date", "usd_delta"]].copy()
+    _usd["cumulative"] = _usd["usd_delta"].cumsum()
+    _usd = _usd.rename(columns={"usd_delta": "amount"})
+    _usd["currency"] = "USD"
+
+    _ils = deposits_df[deposits_df["ils_delta"] != 0].sort_values("date")[["date", "ils_delta"]].copy()
+    _ils["cumulative"] = _ils["ils_delta"].cumsum()
+    _ils = _ils.rename(columns={"ils_delta": "amount"})
+    _ils["currency"] = "ILS"
+
+    cdf = pd.concat([_usd, _ils]).reset_index(drop=True)
+    cdf["date"] = pd.to_datetime(cdf["date"])
+
+    fig = go.Figure()
+    if not _ils.empty:
+        fig.add_trace(go.Scatter(
+            x=_ils["date"], y=_ils["cumulative"],
+            mode="lines+markers",
+            name="ILS",
+            line=dict(color="#fb923c"),
+            marker=dict(color="#fb923c", size=8),
+            customdata=_ils[["amount"]].values,
+            hovertemplate="<b>ILS deposit</b><br>Date: %{x|%Y-%m-%d}<br>Amount: ₪%{customdata[0]:,.2f}<br>Cumulative: ₪%{y:,.2f}<extra></extra>",
+        ))
+    if not _usd.empty:
+        fig.add_trace(go.Scatter(
+            x=_usd["date"], y=_usd["cumulative"],
+            mode="lines+markers",
+            name="USD",
+            line=dict(color="#60a5fa"),
+            marker=dict(color="#60a5fa", size=8),
+            customdata=_usd[["amount"]].values,
+            hovertemplate="<b>USD deposit</b><br>Date: %{x|%Y-%m-%d}<br>Amount: $%{customdata[0]:,.2f}<br>Cumulative: $%{y:,.2f}<extra></extra>",
+        ))
+    fig.update_layout(
+        template=get_plotly_template(),
+        xaxis_title=None,
+        yaxis_title="Cumulative Deposits",
+        height=280,
+        legend_title_text="Currency",
+    )
+    st.plotly_chart(fig, width="stretch")
+
+    dep_display = deposits_df[["date", "usd_delta", "ils_delta"]].copy()
+    dep_display["date"] = dep_display["date"].dt.date
+    dep_display["Amount"] = dep_display.apply(
+        lambda r: f"${abs(r['usd_delta']):,.2f}" if r["usd_delta"] != 0 else f"₪{abs(r['ils_delta']):,.2f}",
+        axis=1,
+    )
+    dep_display = dep_display[["date", "Amount"]].sort_values("date", ascending=False).reset_index(drop=True)
+    st.dataframe(dep_display, hide_index=True, width="stretch")
+
+# ---------------------------------------------------------------------------
 # FX conversions
 # ---------------------------------------------------------------------------
 
