@@ -47,11 +47,11 @@ table_df = table_df.drop(columns=["_display_idx", "action_type"], errors="ignore
 st.dataframe(
     table_df,
     column_config={
-        "usd_delta":  st.column_config.NumberColumn("usd_delta",  format="$%.2f"),
-        "fees_usd":   st.column_config.NumberColumn("fees_usd",   format="$%.2f"),
-        "usd_balance": st.column_config.NumberColumn("usd_balance", format="$%.2f"),
-        "ils_delta":  st.column_config.NumberColumn("ils_delta",  format="₪%.2f"),
-        "ils_balance": st.column_config.NumberColumn("ils_balance", format="₪%.2f"),
+        "usd_delta":  st.column_config.NumberColumn("usd_delta",  format="$%,.2f"),
+        "fees_usd":   st.column_config.NumberColumn("fees_usd",   format="$%,.2f"),
+        "usd_balance": st.column_config.NumberColumn("usd_balance", format="$%,.2f"),
+        "ils_delta":  st.column_config.NumberColumn("ils_delta",  format="₪%,.2f"),
+        "ils_balance": st.column_config.NumberColumn("ils_balance", format="₪%,.2f"),
     },
     width="stretch",
     hide_index=False,
@@ -116,8 +116,8 @@ fx_display = order_table_newest_first_with_chrono_index(fx[["date", "USD Amount"
 st.dataframe(
     fx_display,
     column_config={
-        "USD Amount": st.column_config.NumberColumn("USD Amount", format="$%.2f"),
-        "ILS Amount": st.column_config.NumberColumn("ILS Amount", format="₪%.2f"),
+        "USD Amount": st.column_config.NumberColumn("USD Amount", format="$%,.2f"),
+        "ILS Amount": st.column_config.NumberColumn("ILS Amount", format="₪%,.2f"),
     },
     width="stretch",
     hide_index=True,

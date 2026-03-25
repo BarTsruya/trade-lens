@@ -62,7 +62,7 @@ if not fees.trading_by_year.empty:
             ticker_df = ticker_df.merge(action_counts, on="symbol", how="left")
         st.dataframe(
             ticker_df[["symbol", "Actions", "amount_value"]].rename(columns={"symbol": "Ticker", "amount_value": "Total"}),
-            column_config={"Total": st.column_config.NumberColumn("Total", format="$%.2f")},
+            column_config={"Total": st.column_config.NumberColumn("Total", format="$%,.2f")},
             hide_index=True,
         )
 

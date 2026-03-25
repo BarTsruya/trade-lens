@@ -140,10 +140,10 @@ else:
     st.dataframe(
         display_df.style.apply(_style, axis=1),
         column_config={
-            "amount": st.column_config.NumberColumn("amount", format="₪%.2f"),
-            "tax_shield_state": st.column_config.NumberColumn("tax_shield_state", format="₪%.2f"),
-            "tax_payable_state": st.column_config.NumberColumn("tax_payable_state", format="₪%.2f"),
-            "total_annual_tax": st.column_config.NumberColumn("total_annual_tax", format="₪%.2f"),
+            "amount": st.column_config.NumberColumn("amount", format="₪%,.2f"),
+            "tax_shield_state": st.column_config.NumberColumn("tax_shield_state", format="₪%,.2f"),
+            "tax_payable_state": st.column_config.NumberColumn("tax_payable_state", format="₪%,.2f"),
+            "total_annual_tax": st.column_config.NumberColumn("total_annual_tax", format="₪%,.2f"),
         },
         width="stretch",
         hide_index=False,
@@ -192,5 +192,5 @@ else:
         tx_df = tx_df.rename(columns={"paper_name": "Ticker"})
     tx_df = tx_df.rename(columns={"amount_value": "Amount"})
     st.dataframe(tx_df, width="stretch", hide_index=True, column_config={
-        "Amount": st.column_config.NumberColumn("Amount", format="$%.2f"),
+        "Amount": st.column_config.NumberColumn("Amount", format="$%,.2f"),
     })

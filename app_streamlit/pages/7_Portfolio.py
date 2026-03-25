@@ -54,8 +54,8 @@ else:
         display_h,
         column_config={
             "Qty": st.column_config.NumberColumn(format="%.4g"),
-            "Avg Buy Price": st.column_config.NumberColumn(format="$%.2f"),
-            "Cost Basis": st.column_config.NumberColumn(format="$%.2f"),
+            "Avg Buy Price": st.column_config.NumberColumn(format="$%,.2f"),
+            "Cost Basis": st.column_config.NumberColumn(format="$%,.2f"),
         },
         hide_index=True,
         width="stretch",

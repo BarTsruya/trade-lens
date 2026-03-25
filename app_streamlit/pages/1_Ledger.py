@@ -109,10 +109,10 @@ if "_display_idx" in display_df.columns:
 st.dataframe(
     display_df,
     column_config={
-        "delta_usd": st.column_config.NumberColumn("delta_usd", format="$%.2f"),
-        "fees_usd": st.column_config.NumberColumn("fees_usd", format="$%.2f"),
-        "delta_ils": st.column_config.NumberColumn("delta_ils", format="₪%.2f"),
-        "estimated_capital_gains_tax": st.column_config.NumberColumn("estimated_capital_gains_tax", format="₪%.2f"),
+        "delta_usd": st.column_config.NumberColumn("delta_usd", format="$%,.2f"),
+        "fees_usd": st.column_config.NumberColumn("fees_usd", format="$%,.2f"),
+        "delta_ils": st.column_config.NumberColumn("delta_ils", format="₪%,.2f"),
+        "estimated_capital_gains_tax": st.column_config.NumberColumn("estimated_capital_gains_tax", format="₪%,.2f"),
     },
     width="stretch",
     hide_index=False,

@@ -68,8 +68,8 @@ def _show_trade_detail(ct) -> None:
         rows[["date", "Action", "Quantity", "Price", "Amount"]],
         column_config={
             "Quantity": st.column_config.NumberColumn("Quantity", format="%.4g"),
-            "Price":    st.column_config.NumberColumn("Price",    format="$%.2f"),
-            "Amount":   st.column_config.NumberColumn("Amount",   format="$%.2f"),
+            "Price":    st.column_config.NumberColumn("Price",    format="$%,.2f"),
+            "Amount":   st.column_config.NumberColumn("Amount",   format="$%,.2f"),
         },
         hide_index=True,
         width="stretch",
@@ -212,9 +212,9 @@ else:
         event = st.dataframe(
             styled_df,
             column_config={
-                "Buy Cost":   st.column_config.NumberColumn("Buy Cost",   format="$%.2f"),
-                "Avg Buy":    st.column_config.NumberColumn("Avg Buy",    format="$%.2f"),
-                "Sell Price": st.column_config.NumberColumn("Sell Price", format="$%.2f"),
+                "Buy Cost":   st.column_config.NumberColumn("Buy Cost",   format="$%,.2f"),
+                "Avg Buy":    st.column_config.NumberColumn("Avg Buy",    format="$%,.2f"),
+                "Sell Price": st.column_config.NumberColumn("Sell Price", format="$%,.2f"),
             },
             hide_index=True,
             width="stretch",
@@ -288,9 +288,9 @@ else:
         display_df,
         column_config={
             "Quantity": st.column_config.NumberColumn("Quantity", format="%.4g"),
-            "Price":    st.column_config.NumberColumn("Price",    format="$%.2f"),
-            "Amount":   st.column_config.NumberColumn("Amount",   format="$%.2f"),
-            "Fees":     st.column_config.NumberColumn("Fees",     format="$%.2f"),
+            "Price":    st.column_config.NumberColumn("Price",    format="$%,.2f"),
+            "Amount":   st.column_config.NumberColumn("Amount",   format="$%,.2f"),
+            "Fees":     st.column_config.NumberColumn("Fees",     format="$%,.2f"),
         },
         width="stretch",
         hide_index=False,

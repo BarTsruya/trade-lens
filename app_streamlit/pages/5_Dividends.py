@@ -81,5 +81,5 @@ if "paper_name" in tx_df.columns:
     tx_df = tx_df.rename(columns={"paper_name": "Ticker"})
 tx_df = tx_df.rename(columns={"amount_value": "Amount"})
 st.dataframe(tx_df, width="stretch", hide_index=True, column_config={
-    "Amount": st.column_config.NumberColumn("Amount", format="$%.2f"),
+    "Amount": st.column_config.NumberColumn("Amount", format="$%,.2f"),
 })
