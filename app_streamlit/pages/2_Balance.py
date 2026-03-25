@@ -73,6 +73,27 @@ deposits_df["ils_delta"] = pd.to_numeric(deposits_df["ils_delta"], errors="coerc
 if deposits_df.empty:
     st.info("No cash deposits found.")
 else:
+    dep_years = sorted(deposits_df["date"].dt.year.dropna().unique().astype(int).tolist(), reverse=True)
+    dep_year_filter = st.selectbox("Year", options=["All time"] + dep_years, key="dep_year_filter")
+
+    # Compute cumulative on full dataset so filtered view shows true running total
+    _usd_all = deposits_df[deposits_df["usd_delta"] != 0].sort_values("date")[["date", "usd_delta"]].copy()
+    _usd_all["cumulative"] = _usd_all["usd_delta"].cumsum()
+    _usd_all = _usd_all.rename(columns={"usd_delta": "amount"})
+
+    _ils_all = deposits_df[deposits_df["ils_delta"] != 0].sort_values("date")[["date", "ils_delta"]].copy()
+    _ils_all["cumulative"] = _ils_all["ils_delta"].cumsum()
+    _ils_all = _ils_all.rename(columns={"ils_delta": "amount"})
+
+    # Apply year filter for metrics, table, and chart slice
+    if dep_year_filter != "All time":
+        deposits_df = deposits_df[deposits_df["date"].dt.year == int(dep_year_filter)].copy()
+        _usd = _usd_all[_usd_all["date"].dt.year == int(dep_year_filter)]
+        _ils = _ils_all[_ils_all["date"].dt.year == int(dep_year_filter)]
+    else:
+        _usd = _usd_all
+        _ils = _ils_all
+
     total_usd = deposits_df["usd_delta"].sum()
     total_ils = deposits_df["ils_delta"].sum()
 
@@ -80,19 +101,6 @@ else:
     d1.metric("Total USD Deposited", f"${total_usd:,.2f}")
     d2.metric("Total ILS Deposited", f"₪{total_ils:,.2f}")
     d3.metric("Number of Deposits",  str(len(deposits_df)))
-
-    _usd = deposits_df[deposits_df["usd_delta"] != 0].sort_values("date")[["date", "usd_delta"]].copy()
-    _usd["cumulative"] = _usd["usd_delta"].cumsum()
-    _usd = _usd.rename(columns={"usd_delta": "amount"})
-    _usd["currency"] = "USD"
-
-    _ils = deposits_df[deposits_df["ils_delta"] != 0].sort_values("date")[["date", "ils_delta"]].copy()
-    _ils["cumulative"] = _ils["ils_delta"].cumsum()
-    _ils = _ils.rename(columns={"ils_delta": "amount"})
-    _ils["currency"] = "ILS"
-
-    cdf = pd.concat([_usd, _ils]).reset_index(drop=True)
-    cdf["date"] = pd.to_datetime(cdf["date"])
 
     fig = go.Figure()
     if not _ils.empty:

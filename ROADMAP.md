@@ -31,8 +31,7 @@ todo:
 - [ ] Overlay deposits/withdrawals on NAV chart
 - [ ] Return metrics: time-weighted return (TWR), money-weighted return (XIRR)
 - [ ] Compare nominal gain vs real gain (inflation-adjusted)
-- [ ] Export performance timeseries to CSV
-- [ ] add final summary of cash deposits sum VS holdings gain sum + balances sum (how much the many realy changed).
+- [ ] add final summary of cash deposits sum VS holdings gain sum + balances sum (how much the money realy changed).
 
 ---
 
