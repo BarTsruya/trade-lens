@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -97,22 +98,13 @@ else:
     )
     all_ct_symbols = sorted({ct.symbol for ct in summary.closed_trades})
 
-    f1, f2, f3 = st.columns(3)
+    f1, f2 = st.columns(2)
     with f1:
         year_opts = ["All time"] + close_years
         selected_ct_year = st.selectbox("Close year", options=year_opts, index=0, key="ct_year")
     with f2:
         ticker_opts = ["All tickers"] + all_ct_symbols
         selected_ct_ticker = st.selectbox("Ticker", options=ticker_opts, index=0, key="ct_ticker")
-    with f3:
-        sort_opts = [
-            "Default (descending dates)",
-            "P&L amount ↑",
-            "P&L amount ↓",
-            "P&L % ↑",
-            "P&L % ↓",
-        ]
-        selected_ct_sort = st.selectbox("Sort by", options=sort_opts, index=0, key="ct_sort")
 
     filtered_cts = [
         ct for ct in summary.closed_trades
@@ -148,6 +140,37 @@ else:
         c3.metric("Avg Win %",  f"+{avg_win_pct:.1f}%" if win_cts else "—")
         c4.metric("Avg Loss %", f"-{abs(avg_loss_pct):.1f}%" if loss_cts else "—")
 
+        # --- P&L over time chart ---
+        chart_rows = sorted(
+            [{"date": pd.to_datetime(ct.date_to), "pnl": ct.realized_pnl, "ticker": ct.symbol}
+             for ct in filtered_cts if pd.notna(ct.date_to)],
+            key=lambda r: r["date"],
+        )
+        chart_df = pd.DataFrame(chart_rows)
+        chart_df["cumulative"] = chart_df["pnl"].cumsum()
+        chart_df["color"] = chart_df["pnl"].apply(lambda v: "gain" if v >= 0 else "loss")
+
+        _line = alt.Chart(chart_df).mark_line(color="#94a3b8").encode(
+            x=alt.X("date:T", title=None, axis=alt.Axis(format="%b %Y")),
+            y=alt.Y("cumulative:Q", title="Cumulative P&L ($)"),
+        )
+        _dots = alt.Chart(chart_df).mark_circle(size=80).encode(
+            x="date:T",
+            y="cumulative:Q",
+            color=alt.Color(
+                "color:N",
+                scale=alt.Scale(domain=["gain", "loss"], range=["#22c55e", "#ef4444"]),
+                legend=None,
+            ),
+            tooltip=[
+                alt.Tooltip("ticker:N",     title="Ticker"),
+                alt.Tooltip("date:T",       title="Close Date", format="%Y-%m-%d"),
+                alt.Tooltip("pnl:Q",        title="Trade P&L ($)",      format="$,.2f"),
+                alt.Tooltip("cumulative:Q", title="Cumulative P&L ($)", format="$,.2f"),
+            ],
+        )
+        st.altair_chart((_line + _dots).properties(height=280), width="stretch")
+
         # --- Summary table ---
         summary_rows = []
         for ct in filtered_cts:
@@ -160,9 +183,6 @@ else:
             date_from = pd.to_datetime(ct.date_from)
             date_to   = pd.to_datetime(ct.date_to)
             hold_days = (date_to - date_from).days if pd.notna(date_from) and pd.notna(date_to) else None
-            sign = "+" if ct.realized_pnl >= 0 else "-"
-            arrow = "↑" if ct.realized_pnl >= 0 else "↓"
-            pnl_str = f"{sign}${abs(ct.realized_pnl):,.2f} ({arrow}{abs(pnl_pct):.1f}%)"
             summary_rows.append({
                 "Ticker":      ct.symbol,
                 "Close Date":  date_to.date() if pd.notna(date_to) else None,
@@ -170,34 +190,24 @@ else:
                 "Buy Cost":    ct.total_buy_cost,
                 "Avg Buy":     avg_buy_price,
                 "Sell Price":  sell_price,
-                "P&L":         pnl_str,
-                "_pnl_value":  ct.realized_pnl,
-                "_pnl_pct":    pnl_pct,
+                "P&L amount":  ct.realized_pnl,
+                "P&L %":       pnl_pct,
             })
 
         summary_df = pd.DataFrame(summary_rows)
 
-        _sort_map = {
-            "P&L amount ↑": ("_pnl_value", True),
-            "P&L amount ↓": ("_pnl_value", False),
-            "P&L % ↑":      ("_pnl_pct",   True),
-            "P&L % ↓":      ("_pnl_pct",   False),
-        }
-        if selected_ct_sort in _sort_map:
-            _col, _asc = _sort_map[selected_ct_sort]
-            sorted_order = summary_df[_col].argsort().tolist() if _asc else summary_df[_col].argsort()[::-1].tolist()
-            summary_df = summary_df.iloc[sorted_order].reset_index(drop=True)
-            filtered_cts = [filtered_cts[i] for i in sorted_order]
-
         st.caption("Select a row to view trade detail.")
 
-        display_df = summary_df.drop(columns=["_pnl_value", "_pnl_pct"])
-        styled_df = display_df.style.map(
-            lambda v: (
-                "color: #22c55e" if isinstance(v, str) and v.startswith("+")
-                else ("color: #ef4444" if isinstance(v, str) and v.startswith("-") else "")
-            ),
-            subset=["P&L"],
+        styled_df = (
+            summary_df.style
+            .map(
+                lambda v: "color: #22c55e" if v > 0 else ("color: #ef4444" if v < 0 else ""),
+                subset=["P&L amount", "P&L %"],
+            )
+            .format({
+                "P&L amount": lambda v: f"-${abs(v):,.2f}" if v < 0 else f"${v:,.2f}",
+                "P&L %":      lambda v: f"{v:+.1f}%",
+            })
         )
         event = st.dataframe(
             styled_df,
