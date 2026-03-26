@@ -113,7 +113,8 @@ else:
         c2.metric("Qty",           f"{row['quantity']:.4g}")
         c3.metric("Mkt Value",     f"${row['Mkt Value']:,.2f}" if pd.notna(row["Mkt Value"]) else "—")
         # Row 2
-        c1.metric("Day Change",    f"${day_chg:,.2f}" if pd.notna(day_chg) else "—", delta=_dc_d)
+        def _sfmt(v): return (f"+${v:,.2f}" if v >= 0 else f"-${abs(v):,.2f}") if pd.notna(v) else "—"
+        c1.metric("Day Change",    _sfmt(day_chg), delta=_dc_d)
         c2.markdown(
             f"""<div style="border:1px solid rgba(128,128,128,0.2);border-radius:10px;
                 padding:1rem 1.25rem;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:1rem">
@@ -124,7 +125,7 @@ else:
             </div>""",
             unsafe_allow_html=True,
         )
-        c3.metric("Unrealized P&L", f"${pnl:,.2f}" if pd.notna(pnl) else "—", delta=_pnl_d)
+        c3.metric("Unrealized P&L", _sfmt(pnl), delta=_pnl_d)
 
         st.divider()
         st.caption("Transaction History")
@@ -151,7 +152,10 @@ else:
             hide_index=True,
             width="stretch",
         )
-        st.metric("Total Fees", f"${total_fees:,.2f}")
+        num_buy_txns = (sym_trades["Action"] == "buy").sum()
+        _mf1, _mf2 = st.columns(2)
+        _mf1.metric("Total Fees", f"${total_fees:,.2f}")
+        _mf2.metric("Number of Buy Transactions", num_buy_txns)
 
     # ---------------------------------------------------------------------------
     # Summary table (5 columns) — select a row to open detail
@@ -167,12 +171,13 @@ else:
             return "—"
         return f"{v:+.2f}%"
 
-    summary_cols = h[["symbol", "quantity", "avg_price", "total_cost", "Unrealized P&L", "Unrealized P&L %"]].copy()
+    summary_cols = h[["symbol", "Current Price", "quantity", "avg_price", "total_cost", "Unrealized P&L", "Unrealized P&L %"]].copy()
     summary_cols = summary_cols.rename(columns={
-        "symbol":     "Ticker",
-        "quantity":   "Qty",
-        "avg_price":  "Avg Buy Price",
-        "total_cost": "Cost Basis",
+        "symbol":        "Ticker",
+        "Current Price": "Current Price",
+        "quantity":      "Qty",
+        "avg_price":     "Avg Buy Price",
+        "total_cost":    "Cost Basis",
     })
 
     def _color(v):
@@ -184,12 +189,38 @@ else:
         summary_cols.style
         .map(_color, subset=["Unrealized P&L", "Unrealized P&L %"])
         .format({
+            "Current Price":    lambda v: f"${v:,.2f}" if pd.notna(v) else "—",
             "Qty":              lambda v: f"{v:.4g}" if pd.notna(v) else "—",
             "Avg Buy Price":    lambda v: f"${v:,.2f}" if pd.notna(v) else "—",
             "Cost Basis":       lambda v: f"${v:,.2f}" if pd.notna(v) else "—",
             "Unrealized P&L":   _fmt_pnl,
             "Unrealized P&L %": _fmt_pct,
         })
+    )
+
+    _total_day_chg  = h["Day Change $"].dropna().sum()
+    _total_unrealized = h["Unrealized P&L"].dropna().sum()
+    _total_unreal_pct = (
+        _total_unrealized / h["total_cost"].sum() * 100
+        if h["total_cost"].sum() != 0 else None
+    )
+    _total_dc_pct = (
+        _total_day_chg / (h["Mkt Value"].dropna().sum() - _total_day_chg) * 100
+        if (h["Mkt Value"].dropna().sum() - _total_day_chg) != 0 else None
+    )
+    _sm1, _sm2 = st.columns(2)
+    def _signed_usd(v: float) -> str:
+        return f"+${v:,.2f}" if v >= 0 else f"-${abs(v):,.2f}"
+
+    _sm1.metric(
+        "Unrealized P&L",
+        _signed_usd(_total_unrealized),
+        delta=f"{_total_unreal_pct:+.2f}%" if _total_unreal_pct is not None else None,
+    )
+    _sm2.metric(
+        "Day Change",
+        _signed_usd(_total_day_chg),
+        delta=f"{_total_dc_pct:+.2f}%" if _total_dc_pct is not None else None,
     )
 
     st.markdown("🖱️ **Click any row** for full position details.")
@@ -200,7 +231,6 @@ else:
         on_select="rerun",
         selection_mode="single-row",
     )
-    st.caption("Prices delayed ~15 min.")
 
     selected = event.selection.rows
     if selected:
@@ -219,7 +249,11 @@ else:
 
     _symbol_order = {"symbol": h["symbol"].tolist()}
 
+    _total_cost_basis = h["total_cost"].sum()
+    _total_mkt_value  = h["_mkt_val_plot"].sum()
+
     with pie_c1:
+        st.metric("Total Cost Basis", f"${_total_cost_basis:,.2f}")
         fig_cost = px.pie(
             h, values="total_cost", names="symbol", hole=0.4,
             template=get_plotly_template(),
@@ -227,10 +261,11 @@ else:
             category_orders=_symbol_order,
         )
         fig_cost.update_traces(textinfo="label+percent", hovertemplate="%{label}<br>$%{value:,.2f}<extra></extra>")
-        fig_cost.update_layout(title="Cost Basis Allocation", showlegend=False, margin=dict(t=40, b=20, l=20, r=20))
+        fig_cost.update_layout(showlegend=False, margin=dict(t=20, b=20, l=20, r=20))
         st.plotly_chart(fig_cost, width="stretch")
 
     with pie_c2:
+        st.metric("Total Market Value", f"${_total_mkt_value:,.2f}")
         fig_mkt = px.pie(
             h, values="_mkt_val_plot", names="symbol", hole=0.4,
             template=get_plotly_template(),
@@ -238,7 +273,7 @@ else:
             category_orders=_symbol_order,
         )
         fig_mkt.update_traces(textinfo="label+percent", hovertemplate="%{label}<br>$%{value:,.2f}<extra></extra>")
-        fig_mkt.update_layout(title="Market Value Allocation", showlegend=False, margin=dict(t=40, b=20, l=20, r=20))
+        fig_mkt.update_layout(showlegend=False, margin=dict(t=20, b=20, l=20, r=20))
         st.plotly_chart(fig_mkt, width="stretch")
 
 
@@ -494,7 +529,7 @@ summary_rows = [
     {"Metric": "Current Cash (USD)",       "Value": f"${current_usd_cash:,.2f}"},
     {"Metric": "Current Cash (ILS)",       "Value": f"₪{current_ils_cash:,.2f}"},
     {"Metric": "Current Holdings Value",   "Value": f"${mkt_value_total:,.2f}"},
-    {"Metric": "Total Portfolio Value",    "Value": f"${final_nav:,.2f}"},
+    {"Metric": "Total Total Market Value",    "Value": f"${final_nav:,.2f}"},
 ]
 
 summary_df = pd.DataFrame(summary_rows)
