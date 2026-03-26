@@ -77,47 +77,144 @@ else:
     )
     h["Day Change %"] = h["symbol"].map(lambda s: live.get(s, {}).get("day_change_pct"))
 
-    display_h = h[["symbol", "paper_name", "quantity", "avg_price", "total_cost",
-                   "Current Price", "Mkt Value", "Unrealized P&L", "Unrealized P&L %", "Day Change $", "Day Change %"]].rename(columns={
-        "symbol": "Ticker",
-        "paper_name": "Name",
-        "quantity": "Qty",
-        "avg_price": "Avg Buy",
-        "total_cost": "Cost Basis",
-    })
+    # ---------------------------------------------------------------------------
+    # Today's Movers strip
+    # ---------------------------------------------------------------------------
 
-    # Color Unrealized P&L and day-change columns green/red
-    def _pnl_color(v):
-        if pd.isna(v) or v is None:
+    _movers = []
+    for _, _mrow in h.iterrows():
+        _sym = _mrow["symbol"]
+        _movers.append({
+            "symbol":              _sym,
+            "price":               live.get(_sym, {}).get("price"),
+            "day_change_pct":      live.get(_sym, {}).get("day_change_pct"),
+            "day_change_holding":  _mrow["Day Change $"],  # per-share × qty
+        })
+    # Biggest absolute movers first; unknowns at end
+    _movers.sort(
+        key=lambda x: abs(x["day_change_pct"]) if x["day_change_pct"] is not None else -1,
+        reverse=True,
+    )
+
+    _MAX_PER_ROW = 6
+    for _row_start in range(0, len(_movers), _MAX_PER_ROW):
+        _row_items = _movers[_row_start : _row_start + _MAX_PER_ROW]
+        _card_cols = st.columns(len(_row_items))
+        for _col, _m in zip(_card_cols, _row_items):
+            _dc_pct     = _m["day_change_pct"]
+            _dc_holding = _m["day_change_holding"]
+            _price_val  = _m["price"]
+
+            if _dc_pct is not None:
+                _card_color = "#22c55e" if _dc_pct >= 0 else "#ef4444"
+                _arrow = "▲" if _dc_pct >= 0 else "▼"
+                _sign = "+" if _dc_pct >= 0 else ""
+                _pct_str = f"{_arrow} {_sign}{_dc_pct:.2f}%"
+            else:
+                _card_color = "#6b7280"
+                _pct_str = "—"
+
+            if pd.notna(_dc_holding) and _dc_holding is not None:
+                _holding_str = f"{'+'if _dc_holding >= 0 else ''}${abs(_dc_holding):,.2f}"
+            else:
+                _holding_str = "—"
+
+            _price_str = f"${_price_val:,.2f}" if _price_val is not None else "—"
+
+            with _col:
+                st.markdown(
+                    f"""<div style="border:1px solid {_card_color};border-radius:8px;
+padding:10px 12px;text-align:center;margin-bottom:8px;">
+  <div style="font-weight:700;font-size:1rem;letter-spacing:.05em;">{_m['symbol']}</div>
+  <div style="font-size:0.82rem;color:#9ca3af;margin:2px 0;">{_price_str}</div>
+  <div style="color:{_card_color};font-weight:600;font-size:0.9rem;">{_pct_str}</div>
+  <div style="font-size:0.72rem;color:#6b7280;margin-top:4px;">Today's P&L</div>
+  <div style="color:{_card_color};font-size:0.82rem;">{_holding_str}</div>
+</div>""",
+                    unsafe_allow_html=True,
+                )
+
+    # ---------------------------------------------------------------------------
+    # Holding detail dialog
+    # ---------------------------------------------------------------------------
+
+    @st.dialog("Position Details", width="large")
+    def _show_holding_detail(row: pd.Series) -> None:
+        pnl      = row["Unrealized P&L"]
+        pnl_pct  = row["Unrealized P&L %"]
+        pnl_sign = "+" if pd.notna(pnl) and pnl >= 0 else "-"
+        pct_arrow = "↑" if pd.notna(pnl_pct) and pnl_pct >= 0 else "↓"
+        pnl_color = "green" if pd.notna(pnl) and pnl >= 0 else "red"
+        pnl_str = (
+            f"{pnl_sign}${abs(pnl):,.2f} ({pct_arrow}{abs(pnl_pct):.1f}%)"
+            if pd.notna(pnl) and pd.notna(pnl_pct) else "—"
+        )
+
+        st.markdown(f"**{row['symbol']}** &nbsp; :{pnl_color}[{pnl_str}]")
+        st.caption(row["paper_name"] or "")
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Current Price", f"${row['Current Price']:,.2f}" if pd.notna(row["Current Price"]) else "—")
+        c2.metric("Market Value",  f"${row['Mkt Value']:,.2f}"     if pd.notna(row["Mkt Value"])     else "—")
+        c3.metric("Qty",           f"{row['quantity']:.4g}")
+        c4.metric("Avg Buy Price", f"${row['avg_price']:,.2f}")
+
+        c5, c6, c7, _ = st.columns(4)
+        c5.metric("Cost Basis",     f"${row['total_cost']:,.2f}")
+        c6.metric("Unrealized P&L", f"${pnl:,.2f}"     if pd.notna(pnl)     else "—",
+                  delta=f"{pnl_pct:+.2f}%" if pd.notna(pnl_pct) else None)
+
+        day_chg     = row["Day Change $"]
+        day_chg_pct = row["Day Change %"]
+        c7.metric("Day Change",
+                  f"${day_chg:,.2f}"     if pd.notna(day_chg)     else "—",
+                  delta=f"{day_chg_pct:+.2f}%" if pd.notna(day_chg_pct) else None)
+
+    # ---------------------------------------------------------------------------
+    # Summary table (5 columns) — select a row to open detail
+    # ---------------------------------------------------------------------------
+
+    def _fmt_pnl(v):
+        if v is None or pd.isna(v):
+            return "—"
+        return f"-${abs(v):,.2f}" if v < 0 else f"${v:,.2f}"
+
+    def _fmt_pct(v):
+        if v is None or pd.isna(v):
+            return "—"
+        return f"{v:+.2f}%"
+
+    summary_cols = h[["symbol", "Mkt Value", "Unrealized P&L", "Unrealized P&L %"]].copy()
+    summary_cols = summary_cols.rename(columns={"symbol": "Ticker"})
+
+    def _color(v):
+        if v is None or (isinstance(v, float) and pd.isna(v)):
             return ""
         return "color: #22c55e" if v > 0 else ("color: #ef4444" if v < 0 else "")
 
     styled = (
-        display_h.style
-        .map(_pnl_color, subset=["Unrealized P&L", "Unrealized P&L %", "Day Change $", "Day Change %"])
+        summary_cols.style
+        .map(_color, subset=["Unrealized P&L", "Unrealized P&L %"])
         .format({
-            "Unrealized P&L":   lambda v: f"-${abs(v):,.2f}" if pd.notna(v) and v < 0
-                                else (f"${v:,.2f}" if pd.notna(v) else "—"),
-            "Unrealized P&L %": lambda v: f"{v:+.2f}%" if pd.notna(v) else "—",
-            "Day Change $":     lambda v: f"-${abs(v):,.2f}" if pd.notna(v) and v < 0
-                                else (f"${v:,.2f}" if pd.notna(v) else "—"),
-            "Day Change %":     lambda v: f"{v:+.2f}%" if pd.notna(v) else "—",
+            "Mkt Value":        lambda v: f"${v:,.2f}" if pd.notna(v) else "—",
+            "Unrealized P&L":   _fmt_pnl,
+            "Unrealized P&L %": _fmt_pct,
         })
     )
 
-    st.dataframe(
+    st.caption("Select a row to view position detail.")
+    event = st.dataframe(
         styled,
-        column_config={
-            "Qty":           st.column_config.NumberColumn("Qty",           format="%.4g"),
-            "Avg Buy":       st.column_config.NumberColumn("Avg Buy",       format="$%,.2f"),
-            "Cost Basis":    st.column_config.NumberColumn("Cost Basis",    format="$%,.2f"),
-            "Current Price": st.column_config.NumberColumn("Current Price", format="$%,.2f"),
-            "Mkt Value":     st.column_config.NumberColumn("Mkt Value",     format="$%,.2f"),
-        },
         hide_index=True,
         width="stretch",
+        on_select="rerun",
+        selection_mode="single-row",
     )
     st.caption("Prices delayed ~15 min.")
+
+    selected = event.selection.rows
+    if selected:
+        _show_holding_detail(h.iloc[selected[0]])
 
     # Assign consistent colors per ticker for both pie charts
     _palette = px.colors.qualitative.Plotly

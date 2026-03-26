@@ -28,7 +28,7 @@ summary = get_holdings_summary(ledger)
 # Trade detail dialog
 # ---------------------------------------------------------------------------
 
-@st.dialog("Trade Detail", width="large")
+@st.dialog("Trade Details", width="large")
 def _show_trade_detail(ct) -> None:
     date_from = pd.to_datetime(ct.date_from).strftime("%b %d, %Y") if pd.notna(ct.date_from) else "?"
     date_to   = pd.to_datetime(ct.date_to).strftime("%b %d, %Y")   if pd.notna(ct.date_to)   else "?"

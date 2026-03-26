@@ -1,9 +1,10 @@
 # Trade Lens — Roadmap
 
 todo:
-- [ ] check of the the 1.51$ missing in USD balance
+- [ ] check of the the 1.51$ missing in USD balance (use another csv)
 - [ ] design a home page that linked to all sub pages (boxes view)
 - [ ] change tabs order (portfolio at top, ledger at bottom)
+- [ ] add tax payments to taxes summary
 
 ---
 
