@@ -137,7 +137,9 @@ else:
             "execution_price":  "Price",
             "delta_usd":        "Amount",
             "fees_usd":         "Fees",
-        }).sort_values("date", ascending=False)
+        })
+        sym_trades["Amount"] = pd.to_numeric(sym_trades.get("Amount"), errors="coerce").abs()
+        sym_trades = sym_trades.sort_values("date", ascending=False)
         display_cols = [c for c in ("date", "Action", "Qty", "Price", "Amount") if c in sym_trades.columns]
         st.dataframe(
             sym_trades[display_cols],
