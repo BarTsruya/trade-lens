@@ -196,7 +196,7 @@ else:
 
         summary_df = pd.DataFrame(summary_rows)
 
-        st.caption("Select a row to view trade detail.")
+        st.markdown("🖱️ **Click any row** for full trade details.")
 
         styled_df = (
             summary_df.style

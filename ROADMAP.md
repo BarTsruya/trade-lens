@@ -5,6 +5,7 @@ todo:
 - [ ] design a home page that linked to all sub pages (boxes view)
 - [ ] change tabs order (portfolio at top, ledger at bottom)
 - [ ] add tax payments to taxes summary
+- [ ] make sure consistant UI and terminology (Qty / Quantity for example)
 
 ---
 
